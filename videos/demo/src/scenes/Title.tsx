@@ -1,10 +1,15 @@
 import React from 'react';
 import {AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig} from 'remotion';
+import {loadFont as loadJetBrainsMono} from '@remotion/google-fonts/JetBrainsMono';
+import {loadFont as loadInter} from '@remotion/google-fonts/Inter';
 import {PALETTE} from '../palette';
 
-// ANSI-shadow figlet font for "camclave". Each glyph uses Unicode block
-// characters so it reads as a heavy, modern wordmark at video scale —
-// not the spindly look you get from old-school standard figlet.
+// Explicit font loading so the rendered glyph widths are deterministic
+// across machines (system fallbacks like Courier New were too wide and
+// pushed the wordmark past the 1920px composition edge).
+const jbm = loadJetBrainsMono('normal', {weights: ['700']});
+const inter = loadInter('normal', {weights: ['400', '600', '700']});
+
 const ASCII_LINES = [
   ' ██████╗ █████╗ ███╗   ███╗ ██████╗██╗      █████╗ ██╗   ██╗███████╗',
   '██╔════╝██╔══██╗████╗ ████║██╔════╝██║     ██╔══██╗██║   ██║██╔════╝',
@@ -14,16 +19,17 @@ const ASCII_LINES = [
   ' ╚═════╝╚═╝  ╚═╝╚═╝     ╚═╝ ╚═════╝╚══════╝╚═╝  ╚═╝  ╚═══╝  ╚══════╝',
 ];
 
+// 68 glyphs wide. JetBrains Mono 700 weight has an em advance of ~0.6,
+// so font_size * 68 * 0.6 = pixel width. We want comfortable margin in
+// the 1920px composition — target ~1500px text width = 1500 / (68*0.6) = ~37,
+// so fontSize 36 leaves ~200px of margin on each side and reads big.
+const FONT_SIZE = 36;
+
 export const TitleScene: React.FC = () => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
 
-  // Tagline appears after the ASCII art is fully revealed
-  const tagEnter = spring({
-    frame: frame - 30,
-    fps,
-    config: {damping: 18},
-  });
+  const tagEnter = spring({frame: frame - 30, fps, config: {damping: 18}});
   const tagOpacity = interpolate(tagEnter, [0, 1], [0, 1]);
   const tagY = interpolate(tagEnter, [0, 1], [12, 0]);
 
@@ -33,10 +39,10 @@ export const TitleScene: React.FC = () => {
         background: PALETTE.bg,
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 40,
+        gap: 48,
       }}
     >
-      {/* Faint background-grid noise so the title doesn't sit on dead black */}
+      {/* Faint background-grid noise */}
       <div
         style={{
           position: 'absolute',
@@ -47,14 +53,11 @@ export const TitleScene: React.FC = () => {
         }}
       />
 
-      {/* ASCII wordmark — reveals line by line with a slight horizontal
-          shift for kinetic flavor. Each line gets a gradient fill via
-          background-clip:text so the title doesn't read as flat. */}
       <pre
         style={{
-          fontFamily: '"Cascadia Mono", Consolas, "Courier New", monospace',
-          fontSize: 30,
-          lineHeight: 1.05,
+          fontFamily: `${jbm.fontFamily}, "JetBrains Mono", "Cascadia Mono", Consolas, monospace`,
+          fontSize: FONT_SIZE,
+          lineHeight: 1.0,
           margin: 0,
           letterSpacing: 0,
           fontWeight: 700,
@@ -70,7 +73,6 @@ export const TitleScene: React.FC = () => {
           });
           const opacity = interpolate(enter, [0, 1], [0, 1]);
           const translateX = interpolate(enter, [0, 1], [-18, 0]);
-          // Two-stop gradient — same crimson→purple as the original logo.
           return (
             <div
               key={i}
@@ -90,7 +92,6 @@ export const TitleScene: React.FC = () => {
         })}
       </pre>
 
-      {/* Tagline */}
       <div
         style={{
           opacity: tagOpacity,
@@ -101,8 +102,8 @@ export const TitleScene: React.FC = () => {
         <div
           style={{
             color: PALETTE.ink,
-            fontFamily: 'Inter, "Segoe UI", sans-serif',
-            fontSize: 32,
+            fontFamily: `${inter.fontFamily}, "Inter", "Segoe UI", sans-serif`,
+            fontSize: 36,
             fontWeight: 600,
             letterSpacing: 0.3,
           }}
@@ -112,10 +113,10 @@ export const TitleScene: React.FC = () => {
         <div
           style={{
             color: PALETTE.accent,
-            fontFamily: 'Inter, "Segoe UI", sans-serif',
-            fontSize: 20,
+            fontFamily: `${inter.fontFamily}, "Inter", "Segoe UI", sans-serif`,
+            fontSize: 22,
             fontStyle: 'italic',
-            marginTop: 8,
+            marginTop: 10,
           }}
         >
           Solve hardware in real life.
