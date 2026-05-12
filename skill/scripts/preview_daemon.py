@@ -129,8 +129,34 @@ def beep(suppress: bool) -> None:
         pass
 
 
+def _sweep_captures_dir() -> None:
+    """Delete any stale frames left behind from a previous unclean shutdown.
+
+    Run at startup so a crashed daemon's frames don't accumulate. Only touches
+    files inside ~/.camclave/captures/ and the default snapshot at
+    ~/.camclave/latest.png — never anything outside CAMCLAVE_DIR.
+    """
+    try:
+        for p in CAPTURES_DIR.glob("*"):
+            if p.is_file():
+                try:
+                    p.unlink()
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    default_snap = CAMCLAVE_DIR / "latest.png"
+    if default_snap.exists():
+        try:
+            default_snap.unlink()
+        except Exception:
+            pass
+
+
 def run(device: int, ttl: int, no_sound: bool, keep: bool) -> None:
     ensure_dirs()
+    if not keep:
+        _sweep_captures_dir()
     session = Session(
         pid=os.getpid(),
         device=device,
@@ -149,6 +175,7 @@ def run(device: int, ttl: int, no_sound: bool, keep: bool) -> None:
     root.configure(bg=PALETTE["border"])
 
     state = {"flash_until": 0.0, "captures": 0, "shutting_down": False}
+    snapshot_out_paths: set[Path] = set()  # tracks every snapshot --out path used
 
     def shutdown() -> None:
         if state["shutting_down"]:
@@ -160,11 +187,34 @@ def run(device: int, ttl: int, no_sound: bool, keep: bool) -> None:
             pass
         clear_session()
         if not keep:
-            for p in CAPTURES_DIR.glob("frame-*.png"):
+            # Delete everything we wrote into ~/.camclave/captures/ this session
+            for p in CAPTURES_DIR.glob("*"):
+                if p.is_file():
+                    try:
+                        p.unlink()
+                    except Exception:
+                        pass
+            # Also delete any snapshot --out file IF it lives inside ~/.camclave/.
+            # Files the user explicitly pointed elsewhere (e.g. /tmp/print.png)
+            # are left alone — they asked for them there.
+            try:
+                camclave_root = CAMCLAVE_DIR.resolve()
+            except Exception:
+                camclave_root = CAMCLAVE_DIR
+            for p in snapshot_out_paths:
                 try:
-                    p.unlink()
+                    resolved = p.resolve()
                 except Exception:
-                    pass
+                    continue
+                try:
+                    resolved.relative_to(camclave_root)
+                except ValueError:
+                    continue  # outside our dir; leave it
+                if resolved.exists() and resolved.is_file():
+                    try:
+                        resolved.unlink()
+                    except Exception:
+                        pass
         try:
             root.destroy()
         except Exception:
@@ -375,8 +425,10 @@ def run(device: int, ttl: int, no_sound: bool, keep: bool) -> None:
         reload_snapshot_config()
         now = time.time()
         if snapshot_state["until"] and now >= snapshot_state["next_at"] and now < snapshot_state["until"]:
-            Path(snapshot_state["out_path"]).parent.mkdir(parents=True, exist_ok=True)
-            cv2.imwrite(snapshot_state["out_path"], frame_bgr)
+            out = Path(snapshot_state["out_path"])
+            out.parent.mkdir(parents=True, exist_ok=True)
+            cv2.imwrite(str(out), frame_bgr)
+            snapshot_out_paths.add(out)  # tracked so shutdown can clean it up
             snapshot_state["next_at"] = now + snapshot_state["every"]
             state["flash_until"] = max(state["flash_until"], now + 0.2)
             beep(no_sound)

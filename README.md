@@ -111,7 +111,12 @@ The installer:
 - **Default TTL 15 min, hard cap 60 min.** After expiry, capture refuses; the daemon shuts itself down.
 - **Always-on-top red window** labelled **● CAMERA ACTIVE** while the session is live.
 - **Every capture flashes white** in the preview window + system beep. The audible beep is suppressible (`--no-sound`); the flash is not.
-- **Captures wiped on stop** unless you explicitly pass `--keep`. They live in `~/.camclave/captures/`.
+- **Captures wiped on stop** unless you explicitly pass `--keep`:
+  - Default captures (`~/.camclave/captures/frame-*.png`) → deleted.
+  - Default snapshot (`~/.camclave/latest.png`) → deleted.
+  - Snapshot `--out` files that live **inside** `~/.camclave/` → deleted.
+  - Files you explicitly pointed **outside** `~/.camclave/` (e.g. `capture --out /tmp/foo.png`, `snapshots --out /tmp/print.png`) → **kept**, because you asked for that path. You own them.
+  - A crashed daemon's leftovers are swept the next time you `start`.
 
 Full contracts: [`skill/references/consent.md`](skill/references/consent.md) and [`skill/references/safety.md`](skill/references/safety.md).
 

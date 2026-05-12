@@ -15,8 +15,12 @@ These aren't suggestions — they're enforced by the CLI and daemon:
 | Every capture beeps (unless `--no-sound`) | `preview_daemon.py: beep()` |
 | Preview window is always-on-top | `root.attributes("-topmost", True)` |
 | Window has red border + "CAMERA ACTIVE" label | `preview_daemon.py` |
-| Captures land only in `~/.camclave/captures/` | default in `handle_capture_request` |
-| Captures auto-deleted on `stop` | `preview_daemon.py: shutdown()` (unless `--keep`) |
+| Captures land only in `~/.camclave/captures/` (when no `--out` given) | default in `handle_capture_request` |
+| Stale captures from a previous unclean exit are swept at `start` | `preview_daemon.py: _sweep_captures_dir()` |
+| On `stop`, **every file** in `~/.camclave/captures/` is deleted (unless `--keep`) | `preview_daemon.py: shutdown()` |
+| On `stop`, default snapshot file `~/.camclave/latest.png` is deleted | `preview_daemon.py: _sweep_captures_dir()` + tracked `snapshot_out_paths` |
+| On `stop`, any snapshot `--out` path **inside** `~/.camclave/` is deleted; paths **outside** (e.g. `/tmp/foo.png`) are left alone | `preview_daemon.py: shutdown()` — path is resolved and checked against `CAMCLAVE_DIR` |
+| `capture --out PATH` files are NEVER auto-deleted | by design — you explicitly asked for that path |
 | Zero network code | grep the repo for `urllib`/`requests`/`http`/`socket` — none |
 
 ## What `adjust` can and can't do

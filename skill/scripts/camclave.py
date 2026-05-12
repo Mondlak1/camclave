@@ -190,16 +190,73 @@ def cmd_stop(_args: argparse.Namespace) -> None:
     if not s:
         print("camclave: no session to stop.")
         return
+    keep = bool(s.keep)
+
+    # Ask the daemon to exit gracefully so ITS cleanup handler runs and
+    # deletes captures + the default snapshot. taskkill (no /F) on Windows
+    # sends WM_CLOSE which our root.protocol("WM_DELETE_WINDOW", shutdown)
+    # picks up. SIGTERM on Unix lets Python unwind through the `finally:
+    # shutdown()` in run().
     try:
         if os.name == "nt":
-            subprocess.run(["taskkill", "/PID", str(s.pid), "/F"], check=False, capture_output=True)
+            subprocess.run(["taskkill", "/PID", str(s.pid)], check=False, capture_output=True)
         else:
             os.kill(s.pid, 15)
     except Exception:
         pass
-    time.sleep(0.5)
+
+    # Wait up to 2.5s for the daemon to clean up on its own.
+    from session import pid_alive
+    deadline = time.time() + 2.5
+    while time.time() < deadline:
+        if not pid_alive(s.pid):
+            break
+        time.sleep(0.1)
+
+    # Force-kill anything still alive
+    if pid_alive(s.pid):
+        try:
+            if os.name == "nt":
+                subprocess.run(["taskkill", "/PID", str(s.pid), "/F"], check=False, capture_output=True)
+            else:
+                os.kill(s.pid, 9)
+        except Exception:
+            pass
+        time.sleep(0.3)
+
+    # Safety-net sweep in case the daemon was force-killed before its
+    # shutdown() ran. Honors --keep just like the daemon does.
+    if not keep:
+        _sweep_camclave_dir()
+
     clear_session()
     print("camclave: stopped.")
+
+
+def _sweep_camclave_dir() -> None:
+    """Sweep ~/.camclave/captures/ and the default snapshot path.
+
+    Safety net for `stop` — if the daemon got force-killed before its own
+    shutdown() ran, this catches the leftover files. Only touches files
+    inside ~/.camclave/ — never paths outside.
+    """
+    try:
+        captures_dir = CAMCLAVE_DIR / "captures"
+        if captures_dir.exists():
+            for p in captures_dir.glob("*"):
+                if p.is_file():
+                    try:
+                        p.unlink()
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+    default_snap = CAMCLAVE_DIR / "latest.png"
+    if default_snap.exists():
+        try:
+            default_snap.unlink()
+        except Exception:
+            pass
 
 
 def _send_adjust(request: dict) -> dict | None:
