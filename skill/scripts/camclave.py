@@ -182,6 +182,13 @@ def cmd_status(_args: argparse.Namespace) -> None:
 
 
 def cmd_capture(args: argparse.Namespace) -> None:
+    # Validate --out before the consent check so the user gets immediate
+    # path-feedback even without an active session. Path validation has no
+    # side effects and never opens the camera — it's pure input sanitation.
+    out_path: str | None = None
+    if args.out:
+        out_path = str(_safe_out_path(args.out))
+
     s = active_session()
     if not s:
         print(
@@ -195,8 +202,8 @@ def cmd_capture(args: argparse.Namespace) -> None:
     except FileNotFoundError:
         pass
     req: dict = {"token": s.token}
-    if args.out:
-        req["out_path"] = str(_safe_out_path(args.out))
+    if out_path:
+        req["out_path"] = out_path
     if args.reason:
         # Trim to a reasonable length so a wall of text can't crowd out the
         # preview window. The reason is informational, not security-critical.
@@ -226,10 +233,9 @@ def cmd_capture(args: argparse.Namespace) -> None:
 
 
 def cmd_snapshots(args: argparse.Namespace) -> None:
-    s = active_session()
-    if not s:
-        print("camclave: no active session. Run `camclave start` first.", file=sys.stderr)
-        sys.exit(4)
+    # Validate --out and rate before the consent check, so bad input gets
+    # immediate feedback instead of "no active session, try again".
+    out = _safe_out_path(args.out) if args.out else (CAMCLAVE_DIR / "latest.png")
     requested = parse_duration(args.every)
     every = max(2, requested)
     if every != requested:
@@ -239,7 +245,11 @@ def cmd_snapshots(args: argparse.Namespace) -> None:
             file=sys.stderr,
         )
     duration = parse_duration(args.duration)
-    out = _safe_out_path(args.out) if args.out else (CAMCLAVE_DIR / "latest.png")
+
+    s = active_session()
+    if not s:
+        print("camclave: no active session. Run `camclave start` first.", file=sys.stderr)
+        sys.exit(4)
     cfg = {"token": s.token, "every": every, "until": time.time() + duration, "out_path": str(out)}
     safe_write_json(SNAPSHOT_CONFIG, cfg)
     print(f"camclave: snapshot mode on — every {every}s for {duration}s, writing {out}")

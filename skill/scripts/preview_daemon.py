@@ -174,6 +174,14 @@ def run(device: int, ttl: int, no_sound: bool, keep: bool) -> None:
     ensure_dirs()
     if not keep:
         _sweep_captures_dir()
+    # Open the camera BEFORE writing session.json. If we wrote session.json
+    # first and open_camera() then raised, cmd_start's poll loop could see
+    # the briefly-existing session.json and the briefly-alive daemon pid and
+    # declare victory before the daemon died — telling the user "preview
+    # started" when in fact no camera ever opened. Reverse the order so
+    # session.json only exists once we know the camera actually works.
+    cap = open_camera(device)
+
     session = Session(
         pid=os.getpid(),
         token=new_token(),
@@ -184,8 +192,6 @@ def run(device: int, ttl: int, no_sound: bool, keep: bool) -> None:
         no_sound=no_sound,
     )
     write_session(session)
-
-    cap = open_camera(device)
 
     root = tk.Tk()
     root.title("camclave  •  CAMERA ACTIVE")
