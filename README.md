@@ -1,25 +1,22 @@
 <div align="center">
 
-# `camclave`
+<pre>
+ ██████╗ █████╗ ███╗   ███╗ ██████╗██╗      █████╗ ██╗   ██╗███████╗
+██╔════╝██╔══██╗████╗ ████║██╔════╝██║     ██╔══██╗██║   ██║██╔════╝
+██║     ███████║██╔████╔██║██║     ██║     ███████║██║   ██║█████╗  
+██║     ██╔══██║██║╚██╔╝██║██║     ██║     ██╔══██║╚██╗ ██╔╝██╔══╝  
+╚██████╗██║  ██║██║ ╚═╝ ██║╚██████╗███████╗██║  ██║ ╚████╔╝ ███████╗
+ ╚═════╝╚═╝  ╚═╝╚═╝     ╚═╝ ╚═════╝╚══════╝╚═╝  ╚═╝  ╚═══╝  ╚══════╝
+</pre>
 
 ### Connect your camera to an AI agent. Solve hardware in real life.
 
 **A consent-gated webcam plugin for [Claude Code](https://claude.ai/code) and [Codex CLI](https://github.com/openai/codex).** Point your camera at a breadboard, a 3D print, an instrument, a paper schematic — and your AI agent can actually see it. One still frame at a time, only while a visible red "CAMERA ACTIVE" window is on your screen.
 
 <p align="center">
-  <a href="https://github.com/Mondlak1/camclave/releases/download/v0.7.0/demo.mp4">
-    <img src="assets/demo-thumb.png" alt="camclave demo — click to play (17s, 1.5 MB mp4)" width="720">
-  </a>
+  <img src="assets/demo.gif" alt="camclave demo — terminal types `camclave start`, preview window slides in with breathing dot, agent reads multimeter showing 4.96 V DC" width="780">
   <br>
-  <sub><em>click to play · 17 seconds · 1.5 MB · also embeds inline below on GitHub</em></sub>
-</p>
-
-<!--
-GitHub's README also renders this <video> tag inline (other markdown
-viewers fall back to the linked thumbnail above):
--->
-<p align="center">
-  <video src="https://github.com/Mondlak1/camclave/releases/download/v0.7.0/demo.mp4" controls muted loop playsinline width="720"></video>
+  <sub><em>17-second demo · plays inline above · <a href="https://github.com/Mondlak1/camclave/releases/download/v0.7.0/demo.mp4">HD mp4 (1.6 MB)</a></em></sub>
 </p>
 
 [![CI](https://github.com/Mondlak1/camclave/actions/workflows/ci.yml/badge.svg)](https://github.com/Mondlak1/camclave/actions/workflows/ci.yml)
