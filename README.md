@@ -68,9 +68,10 @@ bash ./install.sh
 ```
 
 The installer:
-1. `pip install --user opencv-python Pillow`
-2. Symlinks `skill/` into **both** `~/.claude/skills/camclave/` and `~/.codex/skills/camclave/` (copy fallback on Windows without symlink privilege).
-3. Puts a `camclave` shim on your PATH.
+1. `pip install --user opencv-python Pillow` (required).
+2. `pip install --user pygrabber` on Windows (optional — for human-readable camera names in `camclave devices`; install is best-effort and skipped silently if it fails).
+3. Symlinks `skill/` into **both** `~/.claude/skills/camclave/` and `~/.codex/skills/camclave/` (copy fallback on Windows without symlink privilege).
+4. Puts a `camclave` shim on your PATH.
 
 ## CLI surface
 
@@ -83,7 +84,7 @@ The installer:
 | `camclave snapshots-stop` | Cancel snapshot mode early. |
 | `camclave adjust [--show] [--brightness 0.6] [--exposure -5] [--focus 120] ...` | Tweak the live camera's properties: brightness, contrast, saturation, hue, gain, exposure, focus, zoom, sharpness, gamma, auto_exposure, auto_focus, auto_wb, wb_temperature. `--show` prints current values. The CLI reports what the camera accepted vs. what you asked for. |
 | `camclave stop` | Kill the daemon. Captures auto-deleted unless `--keep` was set. |
-| `camclave devices [--preview]` | Probe camera indices 0..5, reporting which OpenCV backend works. With `--preview`, also saves one PNG per working camera to `~/.camclave/device-<N>.png` so you can visually identify which is the laptop integrated cam vs. the USB webcam vs. a virtual cam, then `camclave start --device <N>`. |
+| `camclave devices [--preview]` | Probe camera indices 0..5, reporting which OpenCV backend works **and the human-readable name** (e.g. `Logitech C920`, `ASUS FHD webcam`, `NVIDIA Broadcast`) when `pygrabber` (Windows) or `/sys/class/video4linux` (Linux) is available. With `--preview`, also saves one PNG per working camera to `~/.camclave/device-<N>.png` for visual confirmation, then `camclave start --device <N>`. |
 
 ## What you can actually do with this
 

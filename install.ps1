@@ -19,6 +19,20 @@ $python = (Get-Command python -ErrorAction SilentlyContinue) ?? (Get-Command py 
 if (-not $python) { throw "Python not found on PATH. Install Python 3.10+ first." }
 & $python.Source -m pip install --user --upgrade opencv-python Pillow | Out-Host
 
+# pygrabber is optional. It lets `camclave devices` show human-readable
+# camera names ("Logitech C920", "HP TrueVision HD", etc.) by querying the
+# DirectShow filter graph. If install fails (no network / locked-down setup),
+# devices probing still works — it just won't show names.
+Write-Step "Installing optional dep pygrabber (camera names)..."
+try {
+    & $python.Source -m pip install --user --upgrade pygrabber | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warn "pygrabber install failed (non-fatal). `camclave devices` will work without names."
+    }
+} catch {
+    Write-Warn "pygrabber install threw: $_  (non-fatal — continuing)."
+}
+
 # 2. Install skill into both agent skill dirs
 function Install-Skill($targetRoot) {
     $target = Join-Path $targetRoot "camclave"

@@ -330,6 +330,39 @@ def cmd_adjust(args: argparse.Namespace) -> None:
             print(f"  {name:<16} -> {actual}{note}")
 
 
+def _device_names() -> dict[int, str]:
+    """Best-effort map of OpenCV device index -> human-readable camera name.
+
+    Windows: uses pygrabber (DSHOW filter graph). DSHOW enumeration order
+    usually matches MSMF order, but it's not guaranteed — call it a hint.
+    Linux:   reads /sys/class/video4linux/videoN/name (direct mapping).
+    macOS:   no lookup yet; returns an empty dict.
+    """
+    if os.name == "nt":
+        try:
+            from pygrabber.dshow_graph import FilterGraph  # type: ignore
+
+            return {i: n for i, n in enumerate(FilterGraph().get_input_devices())}
+        except Exception:
+            return {}
+    if sys.platform.startswith("linux"):
+        try:
+            base = Path("/sys/class/video4linux")
+            if not base.exists():
+                return {}
+            names: dict[int, str] = {}
+            for p in sorted(base.glob("video*")):
+                try:
+                    idx = int(p.name[len("video"):])
+                    names[idx] = (p / "name").read_text().strip()
+                except Exception:
+                    continue
+            return names
+        except Exception:
+            return {}
+    return {}
+
+
 def cmd_devices(args: argparse.Namespace) -> None:
     import cv2
 
@@ -339,6 +372,22 @@ def cmd_devices(args: argparse.Namespace) -> None:
             "(Other indices will still be previewed.)",
             file=sys.stderr,
         )
+
+    names = _device_names()
+    if names:
+        if os.name == "nt":
+            print("camclave: device names (DSHOW order; usually matches the indices below)")
+        else:
+            print("camclave: device names from /sys/class/video4linux")
+        for idx, name in names.items():
+            print(f"  [{idx}] {name}")
+        print("")
+    elif os.name == "nt":
+        print(
+            "camclave: device names unavailable (install `pygrabber` for them: "
+            "`python -m pip install --user pygrabber`)"
+        )
+        print("")
 
     print("camclave: probing camera indices 0..5 (may briefly flash other cameras)")
     if os.name == "nt":
@@ -368,16 +417,17 @@ def cmd_devices(args: argparse.Namespace) -> None:
             if opens and result == "—":
                 result = f"opens but no frame ({name})"
 
+        name_suffix = f"  ({names[i]})" if i in names else ""
         if args.preview and frame_for_preview is not None:
             out = CAMCLAVE_DIR / f"device-{i}.png"
             try:
                 cv2.imwrite(str(out), frame_for_preview)
                 previewed.append((i, str(out)))
-                print(f"  device {i}: {result}  ->  {out}")
+                print(f"  device {i}: {result}{name_suffix}  ->  {out}")
             except Exception as e:
-                print(f"  device {i}: {result}  (preview write failed: {e})")
+                print(f"  device {i}: {result}{name_suffix}  (preview write failed: {e})")
         else:
-            print(f"  device {i}: {result}")
+            print(f"  device {i}: {result}{name_suffix}")
 
     if args.preview:
         if previewed:
