@@ -2,6 +2,15 @@
 
 The user, not the agent, initiates the camera session. There is no persistent "allow camera access" flag on disk; consent is per-session, time-limited, and visibly indicated.
 
+**Scope of consent.** Running `camclave start` grants the agent permission to take **single still frames** on demand, plus periodic still-frame snapshots when `snapshots` is invoked. It does **not** grant:
+
+- video recording — there is no recording path in the codebase
+- audio capture — no audio device is ever opened
+- screen capture — only `cv2.VideoCapture(<webcam-index>)`
+- network upload — there is no network code in the skill
+
+Adjusting camera properties via `camclave adjust` happens through the same session and same consent — it does not require a separate gesture, but it also refuses if no session is active.
+
 ## Lifecycle
 
 1. **User runs `camclave start`** in a terminal.

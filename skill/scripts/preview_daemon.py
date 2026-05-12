@@ -24,10 +24,11 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
 from session import (  # noqa: E402
+    ADJUST_REQUEST,
+    ADJUST_RESPONSE,
     CAPTURE_REQUEST,
     CAPTURE_RESPONSE,
     CAPTURES_DIR,
-    LATEST_FRAME,
     CAMCLAVE_DIR,
     MAX_TTL_SECONDS,
     SNAPSHOT_CONFIG,
@@ -40,6 +41,27 @@ from session import (  # noqa: E402
 PREVIEW_W = 480
 RED = "#d11a1a"
 RED_BRIGHT = "#ff2a2a"
+
+# Adjustable camera properties exposed to `camclave adjust`. Maps the friendly
+# name (used on the CLI and over IPC) to the OpenCV property constant.
+# Some properties are toggles (auto-*); pass 0/1 for those. On Windows DSHOW,
+# auto-exposure uses 0.25 = manual, 0.75 = auto — we pass values through as-is.
+ADJUST_PROPS: dict[str, int] = {
+    "brightness": cv2.CAP_PROP_BRIGHTNESS,
+    "contrast": cv2.CAP_PROP_CONTRAST,
+    "saturation": cv2.CAP_PROP_SATURATION,
+    "hue": cv2.CAP_PROP_HUE,
+    "gain": cv2.CAP_PROP_GAIN,
+    "exposure": cv2.CAP_PROP_EXPOSURE,
+    "focus": cv2.CAP_PROP_FOCUS,
+    "zoom": cv2.CAP_PROP_ZOOM,
+    "sharpness": cv2.CAP_PROP_SHARPNESS,
+    "gamma": cv2.CAP_PROP_GAMMA,
+    "auto_exposure": cv2.CAP_PROP_AUTO_EXPOSURE,
+    "auto_focus": cv2.CAP_PROP_AUTOFOCUS,
+    "auto_wb": cv2.CAP_PROP_AUTO_WB,
+    "wb_temperature": cv2.CAP_PROP_WB_TEMPERATURE,
+}
 
 
 def open_camera(device: int) -> cv2.VideoCapture:
@@ -164,6 +186,47 @@ def run(device: int, ttl: int, no_sound: bool, keep: bool) -> None:
 
     snapshot_state = {"next_at": 0.0, "until": 0.0, "every": 0.0, "out_path": ""}
 
+    def handle_adjust_request() -> None:
+        """Apply property changes the CLI requested, write back what stuck.
+
+        Most webcams silently clip out-of-range values; we report what
+        cap.get() returns AFTER the set so the CLI can show the user what
+        actually took effect.
+        """
+        if not ADJUST_REQUEST.exists():
+            return
+        try:
+            req = json.loads(ADJUST_REQUEST.read_text() or "{}")
+        except Exception:
+            req = {}
+        applied: dict[str, float] = {}
+        rejected: list[str] = []
+        show_only = bool(req.get("show"))
+        if show_only:
+            for name, prop in ADJUST_PROPS.items():
+                applied[name] = float(cap.get(prop))
+        else:
+            for name, value in req.get("set", {}).items():
+                prop = ADJUST_PROPS.get(name)
+                if prop is None:
+                    rejected.append(name)
+                    continue
+                try:
+                    cap.set(prop, float(value))
+                    applied[name] = float(cap.get(prop))
+                except Exception:
+                    rejected.append(name)
+        try:
+            ADJUST_RESPONSE.write_text(
+                json.dumps({"applied": applied, "rejected": rejected, "ts": time.time()})
+            )
+        except Exception:
+            pass
+        try:
+            ADJUST_REQUEST.unlink()
+        except FileNotFoundError:
+            pass
+
     def handle_capture_request(frame_bgr) -> None:
         if not CAPTURE_REQUEST.exists():
             return
@@ -245,11 +308,10 @@ def run(device: int, ttl: int, no_sound: bool, keep: bool) -> None:
             root.after(500, loop)
             return
 
-        try:
-            cv2.imwrite(str(LATEST_FRAME), frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
-        except Exception:
-            pass
-
+        # No continuous frame storage. The daemon never writes a rolling jpg /
+        # ring buffer to disk; frames only land on disk when capture or
+        # snapshot mode explicitly asks for one. See references/safety.md.
+        handle_adjust_request()
         handle_capture_request(frame)
         handle_snapshot(frame)
 

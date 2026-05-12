@@ -15,10 +15,11 @@ from pathlib import Path
 CAMCLAVE_DIR = Path.home() / ".camclave"
 SESSION_FILE = CAMCLAVE_DIR / "session.json"
 CAPTURES_DIR = CAMCLAVE_DIR / "captures"
-LATEST_FRAME = CAMCLAVE_DIR / "latest.jpg"
 CAPTURE_REQUEST = CAMCLAVE_DIR / ".capture-request"
 CAPTURE_RESPONSE = CAMCLAVE_DIR / ".capture-response"
 SNAPSHOT_CONFIG = CAMCLAVE_DIR / "snapshot-config.json"
+ADJUST_REQUEST = CAMCLAVE_DIR / ".adjust-request"
+ADJUST_RESPONSE = CAMCLAVE_DIR / ".adjust-response"
 
 MAX_TTL_SECONDS = 60 * 60
 
@@ -99,7 +100,7 @@ def active_session() -> Session | None:
 
 
 def clear_session() -> None:
-    for f in (SESSION_FILE, CAPTURE_REQUEST, CAPTURE_RESPONSE, SNAPSHOT_CONFIG, LATEST_FRAME):
+    for f in (SESSION_FILE, CAPTURE_REQUEST, CAPTURE_RESPONSE, SNAPSHOT_CONFIG, ADJUST_REQUEST, ADJUST_RESPONSE):
         try:
             f.unlink()
         except FileNotFoundError:

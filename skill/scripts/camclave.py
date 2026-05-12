@@ -4,10 +4,14 @@ Subcommands:
     start             open the preview daemon (this is the consent action)
     status            show whether a session is active
     capture           one-shot frame grab (requires active session)
-    snapshots         periodic snapshot mode
+    snapshots         periodic snapshot mode (still frames, never video)
     snapshots-stop    cancel periodic mode early
+    adjust            tweak camera properties (brightness, exposure, focus, ...)
     stop              kill the daemon and end the session
     devices           list probable camera indices
+
+camclave never captures video. Every frame on disk is an explicit, on-demand
+PNG. There is no streaming, no rolling buffer, no recording path.
 """
 from __future__ import annotations
 
@@ -25,6 +29,8 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
 from session import (  # noqa: E402
+    ADJUST_REQUEST,
+    ADJUST_RESPONSE,
     CAPTURE_REQUEST,
     CAPTURE_RESPONSE,
     CAMCLAVE_DIR,
@@ -35,6 +41,14 @@ from session import (  # noqa: E402
     clear_session,
     read_session,
 )
+
+# Friendly names of every property the daemon will accept. Kept in sync with
+# ADJUST_PROPS in preview_daemon.py.
+ADJUST_PROP_NAMES = [
+    "brightness", "contrast", "saturation", "hue", "gain", "exposure",
+    "focus", "zoom", "sharpness", "gamma",
+    "auto_exposure", "auto_focus", "auto_wb", "wb_temperature",
+]
 
 
 def parse_duration(s: str) -> int:
@@ -188,6 +202,77 @@ def cmd_stop(_args: argparse.Namespace) -> None:
     print("camclave: stopped.")
 
 
+def _send_adjust(request: dict) -> dict | None:
+    try:
+        ADJUST_RESPONSE.unlink()
+    except FileNotFoundError:
+        pass
+    ADJUST_REQUEST.write_text(json.dumps(request))
+    deadline = time.time() + 3
+    while time.time() < deadline:
+        if ADJUST_RESPONSE.exists():
+            try:
+                resp = json.loads(ADJUST_RESPONSE.read_text())
+            except Exception:
+                resp = None
+            try:
+                ADJUST_RESPONSE.unlink()
+            except FileNotFoundError:
+                pass
+            return resp
+        time.sleep(0.05)
+    try:
+        ADJUST_REQUEST.unlink()
+    except FileNotFoundError:
+        pass
+    return None
+
+
+def cmd_adjust(args: argparse.Namespace) -> None:
+    s = active_session()
+    if not s:
+        print("camclave: no active session. Run `camclave start` first.", file=sys.stderr)
+        sys.exit(4)
+
+    if args.show:
+        resp = _send_adjust({"show": True})
+        if not resp:
+            print("camclave: adjust timed out — daemon not responding.", file=sys.stderr)
+            sys.exit(5)
+        print("camclave: current camera properties (values are backend-dependent)")
+        for name in ADJUST_PROP_NAMES:
+            v = resp.get("applied", {}).get(name)
+            print(f"  {name:<16} {v}")
+        return
+
+    settings: dict[str, float] = {}
+    for name in ADJUST_PROP_NAMES:
+        v = getattr(args, name, None)
+        if v is not None:
+            settings[name] = v
+    if not settings:
+        print(
+            "camclave: nothing to adjust. Pass --show to read current values, or one or "
+            "more property flags (e.g. --brightness 0.6 --exposure -7).",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+    resp = _send_adjust({"set": settings})
+    if not resp:
+        print("camclave: adjust timed out — daemon not responding.", file=sys.stderr)
+        sys.exit(5)
+    applied = resp.get("applied", {})
+    rejected = resp.get("rejected", [])
+    for name, value in settings.items():
+        actual = applied.get(name)
+        if name in rejected or actual is None:
+            print(f"  {name:<16} rejected by backend")
+        else:
+            note = "" if abs(actual - value) < 1e-3 else f"  (clipped from {value})"
+            print(f"  {name:<16} -> {actual}{note}")
+
+
 def cmd_devices(_args: argparse.Namespace) -> None:
     import cv2
 
@@ -242,6 +327,20 @@ def main() -> None:
 
     p = sub.add_parser("snapshots-stop", help="turn snapshot mode off early")
     p.set_defaults(func=cmd_snapshots_stop)
+
+    p = sub.add_parser(
+        "adjust",
+        help="tweak camera properties (brightness, exposure, focus, etc.)",
+        description=(
+            "Adjust the live camera's properties. Values are backend-specific: most "
+            "are 0..1, exposure is typically negative (-1 to -13) on Windows DSHOW, "
+            "and auto-* toggles are 0=off / 1=on (DSHOW quirk: 0.25 = manual, 0.75 = auto)."
+        ),
+    )
+    p.add_argument("--show", action="store_true", help="print current values for all properties")
+    for name in ADJUST_PROP_NAMES:
+        p.add_argument(f"--{name.replace('_', '-')}", dest=name, type=float, default=None)
+    p.set_defaults(func=cmd_adjust)
 
     p = sub.add_parser("stop", help="kill the preview daemon and end the session")
     p.set_defaults(func=cmd_stop)

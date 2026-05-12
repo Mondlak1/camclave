@@ -45,6 +45,12 @@ Most of the time you want help from an AI agent, the agent already has everythin
 
 The CLI command name **is the consent signal.** There is no remembered "allow camera" toggle. The camera is off until you type `camclave start`. The agent never starts the session itself.
 
+### No video capture. Ever.
+
+`camclave` only ever writes **single still frames** to disk, and only when `capture` or `snapshots` is explicitly invoked. The daemon never instantiates `cv2.VideoWriter`. There is no rolling buffer, no continuous recording path, no `.mp4` / `.avi` / `.mkv` / `.webm` writer anywhere in this codebase. Grep for `VideoWriter` — zero hits. The "live" preview window renders frames straight to Tk and discards them; nothing about the on-screen preview persists to disk.
+
+If a future version ever adds video, it will be in a separately-named tool with its own consent action — not by extending an existing `camclave start` session.
+
 ## Install
 
 **Windows:**
@@ -73,8 +79,9 @@ The installer:
 | `camclave start [--device 0] [--ttl 15m] [--no-sound] [--keep]` | **Consent action.** Opens the preview daemon. Default TTL 15 min, hard cap 60 min. |
 | `camclave status` | Active? How much TTL left? Is snapshot mode running? |
 | `camclave capture [--out PATH]` | Grabs one frame; prints absolute PNG path on stdout. Preview flashes. |
-| `camclave snapshots --every 30s --duration 10m [--out PATH]` | Periodic mode for long-running tasks. Overwrites one file. |
+| `camclave snapshots --every 30s --duration 10m [--out PATH]` | Periodic mode for long-running tasks. Overwrites one file. Still frames, never video. |
 | `camclave snapshots-stop` | Cancel snapshot mode early. |
+| `camclave adjust [--show] [--brightness 0.6] [--exposure -5] [--focus 120] ...` | Tweak the live camera's properties: brightness, contrast, saturation, hue, gain, exposure, focus, zoom, sharpness, gamma, auto_exposure, auto_focus, auto_wb, wb_temperature. `--show` prints current values. The CLI reports what the camera accepted vs. what you asked for. |
 | `camclave stop` | Kill the daemon. Captures auto-deleted unless `--keep` was set. |
 | `camclave devices` | Probe camera indices 0..5, reporting which OpenCV backend works. |
 
@@ -97,6 +104,8 @@ The installer:
 
 ## Safety — in one screen
 
+- **No video capture, period.** `cv2.VideoWriter` is never instantiated. No `.mp4`/`.avi`/`.mkv`/`.webm` writer exists. Only single-frame PNG/JPG writes triggered by explicit `capture` or `snapshots` calls.
+- **No continuous frame storage.** The daemon does not write a rolling jpg or ring buffer. Frames only hit disk when you ask for one.
 - **Zero network code.** Frames never leave your machine. Grep the repo for `urllib`/`requests`/`http`/`socket` — none.
 - **No persistent consent.** Camera is off until you type `camclave start`.
 - **Default TTL 15 min, hard cap 60 min.** After expiry, capture refuses; the daemon shuts itself down.
