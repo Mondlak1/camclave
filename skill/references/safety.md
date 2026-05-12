@@ -4,6 +4,13 @@ These aren't suggestions — they're enforced by the CLI and daemon:
 
 | Rail | Where enforced |
 | --- | --- |
+| **IPC requests are authenticated.** Every capture / snapshot / adjust request must carry the 32-hex-char session token from `~/.camclave/session.json` (mode 0o600). Mismatched or missing tokens are silently dropped — no response written, no flash, no audit entry. A foreign local process that lacks read access to session.json cannot forge a request. | `preview_daemon.py: _check_token`, `_consume_request`; `session.py: Session.token` |
+| **IPC writes never follow symlinks.** Each IPC file write uses `safe_write_json` which unlinks the target if it's a symlink, then writes through a `.tmp` sibling and `os.replace`s it into place atomically. `O_NOFOLLOW` is added on POSIX. | `session.py: safe_write_json` |
+| **IPC reads never follow symlinks.** `safe_read_json` returns None if the target is a symlink — daemon and CLI treat that as "no request". | `session.py: safe_read_json` |
+| **`--out` paths are sanity-checked.** `..` segments in the user-provided path are rejected; if the resolved parent directory is itself a symlink, the write is rejected. Out-of-`~/.camclave/` paths are still allowed (documented policy) — just guarded. | `camclave.py: _safe_out_path` |
+| **`cv2.imwrite` return values are checked.** A `False` return (disk full / permission / bad path) is reported back to the CLI as a structured `{"error": "..."}` response instead of a fake path. | `preview_daemon.py: handle_capture_request`, `handle_snapshot` |
+| **JSON IPC is schema-validated.** `validate_payload` rejects payloads that don't match the expected type spec. | `session.py: validate_payload` (used by `read_session`) |
+| **Snapshot rate is clamped to ≥2s.** Matches what the agent contract has always claimed; the CLI prints a notice if it had to clamp. | `camclave.py: cmd_snapshots` |
 | **No video capture, ever.** `cv2.VideoWriter` is never instantiated; no `.mp4`/`.avi`/`.mkv`/`.webm` writer exists in the codebase. Only `cv2.imwrite` of individual PNG/JPG frames triggered by an explicit request. | `preview_daemon.py` — grep the repo for `VideoWriter` |
 | **No continuous frame storage.** The daemon does not write a rolling jpg or ring buffer to disk. Frames only land on disk when `capture` or `snapshots` requests one. | `preview_daemon.py: loop()` — no per-frame `imwrite` |
 | Capture refuses without an active session | `camclave.py: cmd_capture` checks `active_session()` |

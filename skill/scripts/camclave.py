@@ -31,16 +31,40 @@ if str(HERE) not in sys.path:
 from session import (  # noqa: E402
     ADJUST_REQUEST,
     ADJUST_RESPONSE,
+    AUDIT_LOG,
     CAPTURE_REQUEST,
     CAPTURE_RESPONSE,
     CAMCLAVE_DIR,
+    DAEMON_LOG,
     MAX_TTL_SECONDS,
     SESSION_FILE,
     SNAPSHOT_CONFIG,
     active_session,
     clear_session,
     read_session,
+    safe_read_json,
+    safe_write_json,
 )
+
+
+def _safe_out_path(raw: str) -> Path:
+    """Reject obviously-abusive --out values, otherwise resolve.
+
+    Keeps the documented policy that paths outside ~/.camclave/ are
+    allowed (so `capture --out /tmp/foo.png` still works), but blocks
+    `..` segments and writes through symlinked parents.
+    """
+    expanded = os.path.expanduser(raw)
+    # Reject `..` in the user-provided string; resolve() would normalize
+    # it silently, but the intent is suspicious — refuse explicitly.
+    if ".." in expanded.replace("\\", "/").split("/"):
+        raise SystemExit(f"camclave: --out rejected — '..' segments not allowed: {raw!r}")
+    p = Path(expanded).resolve()
+    # If the immediate parent is a symlink, refuse — defense against
+    # parent-dir symlink swap targeting attacker-chosen directories.
+    if p.parent.is_symlink():
+        raise SystemExit(f"camclave: --out rejected — parent directory is a symlink: {p.parent}")
+    return p
 
 # Friendly names of every property the daemon will accept. Kept in sync with
 # ADJUST_PROPS in preview_daemon.py.
@@ -79,6 +103,15 @@ def cmd_start(args: argparse.Namespace) -> None:
     if args.keep:
         cmd.append("--keep")
 
+    # Reset the daemon log; the DAEMON itself redirects its stderr/stdout to
+    # this file (from inside __main__) so the redirection doesn't fight with
+    # the Windows DETACHED_PROCESS flag.
+    CAMCLAVE_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        DAEMON_LOG.unlink()
+    except FileNotFoundError:
+        pass
+
     if os.name == "nt":
         DETACHED_PROCESS = 0x00000008
         CREATE_NEW_PROCESS_GROUP = 0x00000200
@@ -93,10 +126,18 @@ def cmd_start(args: argparse.Namespace) -> None:
     s = active_session()
     if not s:
         print(
-            "camclave: failed to start preview daemon. Is the camera in use by another app, "
-            "or are opencv-python/Pillow missing? Try `pip install opencv-python pillow`.",
+            "camclave: failed to start preview daemon.",
             file=sys.stderr,
         )
+        try:
+            tail = DAEMON_LOG.read_text(errors="replace").splitlines()[-30:]
+            if tail:
+                print("--- daemon log (last 30 lines) ---", file=sys.stderr)
+                for line in tail:
+                    print(line, file=sys.stderr)
+                print("--- end daemon log ---", file=sys.stderr)
+        except Exception:
+            pass
         sys.exit(3)
     print(f"camclave: preview started — device {s.device}, ttl {s.ttl_seconds}s, pid {s.pid}")
     print('a red-bordered "CAMERA ACTIVE" window is now visible. Close it (or run `camclave stop`) to end the session.')
@@ -137,22 +178,22 @@ def cmd_capture(args: argparse.Namespace) -> None:
         CAPTURE_RESPONSE.unlink()
     except FileNotFoundError:
         pass
-    req: dict[str, str] = {}
+    req: dict = {"token": s.token}
     if args.out:
-        req["out_path"] = str(Path(args.out).expanduser().resolve())
-    CAPTURE_REQUEST.write_text(json.dumps(req))
+        req["out_path"] = str(_safe_out_path(args.out))
+    safe_write_json(CAPTURE_REQUEST, req)
     deadline = time.time() + 5
     while time.time() < deadline:
-        if CAPTURE_RESPONSE.exists():
-            try:
-                resp = json.loads(CAPTURE_RESPONSE.read_text())
-            except Exception:
-                resp = None
+        resp = safe_read_json(CAPTURE_RESPONSE)
+        if resp is not None:
             try:
                 CAPTURE_RESPONSE.unlink()
             except FileNotFoundError:
                 pass
-            if resp and resp.get("path"):
+            if resp.get("error"):
+                print(f"camclave: capture failed — {resp['error']}", file=sys.stderr)
+                sys.exit(6)
+            if resp.get("path"):
                 print(resp["path"])
                 return
         time.sleep(0.05)
@@ -169,17 +210,28 @@ def cmd_snapshots(args: argparse.Namespace) -> None:
     if not s:
         print("camclave: no active session. Run `camclave start` first.", file=sys.stderr)
         sys.exit(4)
-    every = max(1, parse_duration(args.every))
+    requested = parse_duration(args.every)
+    every = max(2, requested)
+    if every != requested:
+        print(
+            f"camclave: snapshot rate clamped to {every}s (minimum is 2s — see "
+            "skill/SKILL.md rule 2).",
+            file=sys.stderr,
+        )
     duration = parse_duration(args.duration)
-    out = Path(args.out).expanduser().resolve() if args.out else (CAMCLAVE_DIR / "latest.png")
-    cfg = {"every": every, "until": time.time() + duration, "out_path": str(out)}
-    SNAPSHOT_CONFIG.write_text(json.dumps(cfg))
+    out = _safe_out_path(args.out) if args.out else (CAMCLAVE_DIR / "latest.png")
+    cfg = {"token": s.token, "every": every, "until": time.time() + duration, "out_path": str(out)}
+    safe_write_json(SNAPSHOT_CONFIG, cfg)
     print(f"camclave: snapshot mode on — every {every}s for {duration}s, writing {out}")
 
 
 def cmd_snapshots_stop(_args: argparse.Namespace) -> None:
+    s = active_session()
+    if not s:
+        print("camclave: no active session.")
+        return
     if SNAPSHOT_CONFIG.exists():
-        SNAPSHOT_CONFIG.write_text(json.dumps({"disabled": True}))
+        safe_write_json(SNAPSHOT_CONFIG, {"token": s.token, "disabled": True})
         print("camclave: snapshot mode stopped.")
     else:
         print("camclave: snapshot mode wasn't active.")
@@ -264,14 +316,11 @@ def _send_adjust(request: dict) -> dict | None:
         ADJUST_RESPONSE.unlink()
     except FileNotFoundError:
         pass
-    ADJUST_REQUEST.write_text(json.dumps(request))
+    safe_write_json(ADJUST_REQUEST, request)
     deadline = time.time() + 3
     while time.time() < deadline:
-        if ADJUST_RESPONSE.exists():
-            try:
-                resp = json.loads(ADJUST_RESPONSE.read_text())
-            except Exception:
-                resp = None
+        resp = safe_read_json(ADJUST_RESPONSE)
+        if resp is not None:
             try:
                 ADJUST_RESPONSE.unlink()
             except FileNotFoundError:
@@ -292,7 +341,7 @@ def cmd_adjust(args: argparse.Namespace) -> None:
         sys.exit(4)
 
     if args.show:
-        resp = _send_adjust({"show": True})
+        resp = _send_adjust({"token": s.token, "show": True})
         if not resp:
             print("camclave: adjust timed out — daemon not responding.", file=sys.stderr)
             sys.exit(5)
@@ -315,7 +364,7 @@ def cmd_adjust(args: argparse.Namespace) -> None:
         )
         sys.exit(2)
 
-    resp = _send_adjust({"set": settings})
+    resp = _send_adjust({"token": s.token, "set": settings})
     if not resp:
         print("camclave: adjust timed out — daemon not responding.", file=sys.stderr)
         sys.exit(5)

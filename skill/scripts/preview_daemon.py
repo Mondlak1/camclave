@@ -29,6 +29,7 @@ if str(HERE) not in sys.path:
 from session import (  # noqa: E402
     ADJUST_REQUEST,
     ADJUST_RESPONSE,
+    AUDIT_LOG,
     CAPTURE_REQUEST,
     CAPTURE_RESPONSE,
     CAPTURES_DIR,
@@ -38,8 +39,24 @@ from session import (  # noqa: E402
     Session,
     clear_session,
     ensure_dirs,
+    new_token,
+    safe_read_json,
+    safe_write_json,
+    validate_payload,
     write_session,
 )
+
+
+def _check_token(req: dict, expected: str) -> bool:
+    """Reject IPC requests without a matching session token.
+
+    Returns True if the token is present and matches; False otherwise.
+    Mismatches are silently rejected — we do not respond, do not log,
+    do not flash. A foreign process that lacks the token cannot tell
+    whether the daemon is running or not.
+    """
+    tok = req.get("token")
+    return isinstance(tok, str) and tok == expected
 
 PREVIEW_W = 520
 
@@ -159,6 +176,7 @@ def run(device: int, ttl: int, no_sound: bool, keep: bool) -> None:
         _sweep_captures_dir()
     session = Session(
         pid=os.getpid(),
+        token=new_token(),
         device=device,
         started_at=time.time(),
         ttl_seconds=ttl,
@@ -174,7 +192,13 @@ def run(device: int, ttl: int, no_sound: bool, keep: bool) -> None:
     root.attributes("-topmost", True)
     root.configure(bg=PALETTE["border"])
 
-    state = {"flash_until": 0.0, "captures": 0, "shutting_down": False}
+    state = {
+        "flash_until": 0.0,
+        "captures": 0,
+        "shutting_down": False,
+        "last_reason": "",
+        "last_reason_until": 0.0,
+    }
     snapshot_out_paths: set[Path] = set()  # tracks every snapshot --out path used
 
     def shutdown() -> None:
@@ -327,6 +351,27 @@ def run(device: int, ttl: int, no_sound: bool, keep: bool) -> None:
 
     snapshot_state = {"next_at": 0.0, "until": 0.0, "every": 0.0, "out_path": ""}
 
+    def _consume_request(path) -> dict | None:
+        """Read + validate + authenticate an IPC request file.
+
+        Returns the parsed dict if it's authentic (token matches), otherwise
+        deletes the file and returns None. Symlinks / malformed JSON / wrong
+        token all yield None. No response is written for rejected requests
+        — silence is the right answer for unauthenticated callers.
+        """
+        if not path.exists():
+            return None
+        req = safe_read_json(path)
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+        if req is None:
+            return None
+        if not _check_token(req, session.token):
+            return None
+        return req
+
     def handle_adjust_request() -> None:
         """Apply property changes the CLI requested, write back what stuck.
 
@@ -334,20 +379,19 @@ def run(device: int, ttl: int, no_sound: bool, keep: bool) -> None:
         cap.get() returns AFTER the set so the CLI can show the user what
         actually took effect.
         """
-        if not ADJUST_REQUEST.exists():
+        req = _consume_request(ADJUST_REQUEST)
+        if req is None:
             return
-        try:
-            req = json.loads(ADJUST_REQUEST.read_text() or "{}")
-        except Exception:
-            req = {}
         applied: dict[str, float] = {}
         rejected: list[str] = []
-        show_only = bool(req.get("show"))
-        if show_only:
+        if bool(req.get("show")):
             for name, prop in ADJUST_PROPS.items():
                 applied[name] = float(cap.get(prop))
         else:
-            for name, value in req.get("set", {}).items():
+            settings = req.get("set", {})
+            if not isinstance(settings, dict):
+                settings = {}
+            for name, value in settings.items():
                 prop = ADJUST_PROPS.get(name)
                 if prop is None:
                     rejected.append(name)
@@ -358,52 +402,88 @@ def run(device: int, ttl: int, no_sound: bool, keep: bool) -> None:
                 except Exception:
                     rejected.append(name)
         try:
-            ADJUST_RESPONSE.write_text(
-                json.dumps({"applied": applied, "rejected": rejected, "ts": time.time()})
+            safe_write_json(
+                ADJUST_RESPONSE,
+                {"applied": applied, "rejected": rejected, "ts": time.time()},
             )
         except Exception:
             pass
-        try:
-            ADJUST_REQUEST.unlink()
-        except FileNotFoundError:
-            pass
 
     def handle_capture_request(frame_bgr) -> None:
-        if not CAPTURE_REQUEST.exists():
+        req = _consume_request(CAPTURE_REQUEST)
+        if req is None:
             return
-        try:
-            text = CAPTURE_REQUEST.read_text()
-        except FileNotFoundError:
-            return
-        try:
-            req = json.loads(text) if text.strip().startswith("{") else {}
-        except Exception:
-            req = {}
         out_path = req.get("out_path")
-        if not out_path:
+        if not isinstance(out_path, str) or not out_path:
             ts = datetime.now().strftime("%Y%m%dT%H%M%S%f")[:-3]
             out_path = str(CAPTURES_DIR / f"frame-{ts}.png")
-        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
-        cv2.imwrite(out_path, frame_bgr)
-        state["captures"] += 1
-        state["flash_until"] = time.time() + 0.35  # soft fade duration
-        beep(no_sound)
+        reason = req.get("reason") if isinstance(req.get("reason"), str) else None
+
         try:
-            CAPTURE_RESPONSE.write_text(json.dumps({"path": out_path, "ts": time.time()}))
+            Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            try:
+                safe_write_json(CAPTURE_RESPONSE, {"error": f"could not create parent dir: {e}"})
+            except Exception:
+                pass
+            return
+
+        # imwrite returns False on disk full, permission denied, bad ext,
+        # invalid path, etc. Surface that to the CLI instead of fake success.
+        try:
+            ok = cv2.imwrite(out_path, frame_bgr)
+        except Exception as e:
+            ok = False
+            err = str(e)
+        else:
+            err = "cv2.imwrite returned False (disk full, permission, or invalid path)"
+        if not ok:
+            try:
+                safe_write_json(CAPTURE_RESPONSE, {"error": err})
+            except Exception:
+                pass
+            return
+
+        state["captures"] += 1
+        state["flash_until"] = time.time() + 0.35
+        if reason:
+            state["last_reason"] = reason
+            state["last_reason_until"] = time.time() + 4.0
+        beep(no_sound)
+
+        # Audit trail — one JSONL line per capture (in addition to the
+        # always-visible flash + beep + window mode indicator).
+        try:
+            with AUDIT_LOG.open("a", encoding="utf-8") as f:
+                f.write(json.dumps({
+                    "ts": time.time(),
+                    "kind": "capture",
+                    "path": out_path,
+                    "reason": reason,
+                    "captures_so_far": state["captures"],
+                }) + "\n")
         except Exception:
             pass
+
         try:
-            CAPTURE_REQUEST.unlink()
-        except FileNotFoundError:
+            safe_write_json(
+                CAPTURE_RESPONSE,
+                {"path": out_path, "ts": time.time(), "reason": reason},
+            )
+        except Exception:
             pass
 
     def reload_snapshot_config() -> None:
-        if not SNAPSHOT_CONFIG.exists():
+        cfg = safe_read_json(SNAPSHOT_CONFIG)
+        if not cfg:
             snapshot_state["until"] = 0
             return
-        try:
-            cfg = json.loads(SNAPSHOT_CONFIG.read_text())
-        except Exception:
+        # Token authentication — drop unauthenticated config silently.
+        if not _check_token(cfg, session.token):
+            try:
+                SNAPSHOT_CONFIG.unlink()
+            except FileNotFoundError:
+                pass
             return
         if cfg.get("disabled"):
             snapshot_state["until"] = 0
@@ -412,9 +492,13 @@ def run(device: int, ttl: int, no_sound: bool, keep: bool) -> None:
             except FileNotFoundError:
                 pass
             return
-        every = float(cfg.get("every", 0))
-        until = float(cfg.get("until", 0))
-        out_path = cfg.get("out_path") or str(CAMCLAVE_DIR / "latest.png")
+        try:
+            every = float(cfg.get("every", 0))
+            until = float(cfg.get("until", 0))
+        except (TypeError, ValueError):
+            return
+        out_raw = cfg.get("out_path")
+        out_path = out_raw if isinstance(out_raw, str) and out_raw else str(CAMCLAVE_DIR / "latest.png")
         if every != snapshot_state["every"] or until != snapshot_state["until"]:
             snapshot_state["every"] = every
             snapshot_state["until"] = until
@@ -426,12 +510,31 @@ def run(device: int, ttl: int, no_sound: bool, keep: bool) -> None:
         now = time.time()
         if snapshot_state["until"] and now >= snapshot_state["next_at"] and now < snapshot_state["until"]:
             out = Path(snapshot_state["out_path"])
-            out.parent.mkdir(parents=True, exist_ok=True)
-            cv2.imwrite(str(out), frame_bgr)
-            snapshot_out_paths.add(out)  # tracked so shutdown can clean it up
-            snapshot_state["next_at"] = now + snapshot_state["every"]
-            state["flash_until"] = max(state["flash_until"], now + 0.2)
-            beep(no_sound)
+            try:
+                out.parent.mkdir(parents=True, exist_ok=True)
+                ok = cv2.imwrite(str(out), frame_bgr)
+            except Exception:
+                ok = False
+            if ok:
+                snapshot_out_paths.add(out)
+                snapshot_state["next_at"] = now + snapshot_state["every"]
+                state["flash_until"] = max(state["flash_until"], now + 0.2)
+                beep(no_sound)
+                # Audit
+                try:
+                    with AUDIT_LOG.open("a", encoding="utf-8") as f:
+                        f.write(json.dumps({
+                            "ts": now,
+                            "kind": "snapshot",
+                            "path": str(out),
+                            "every": snapshot_state["every"],
+                        }) + "\n")
+                except Exception:
+                    pass
+            else:
+                # Skip this tick; back off slightly so we don't spin on a
+                # broken output path.
+                snapshot_state["next_at"] = now + max(snapshot_state["every"], 2.0)
         if snapshot_state["until"] and now >= snapshot_state["until"]:
             try:
                 SNAPSHOT_CONFIG.unlink()
@@ -509,15 +612,42 @@ def run(device: int, ttl: int, no_sound: bool, keep: bool) -> None:
         shutdown()
 
 
+def _redirect_to_log() -> None:
+    """Send daemon stdout+stderr to ~/.camclave/daemon.log.
+
+    Done from inside the daemon (rather than parent-side Popen redirection)
+    because Windows DETACHED_PROCESS doesn't play well with parent-supplied
+    file handles. This way the daemon owns its own log and a startup
+    exception lands somewhere the CLI can read on the next status check.
+    """
+    try:
+        ensure_dirs()
+        from session import DAEMON_LOG as _LOG
+        f = open(str(_LOG), "w", encoding="utf-8", errors="replace")
+        sys.stdout = f
+        sys.stderr = f
+    except Exception:
+        pass
+
+
 def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--device", type=int, default=0)
-    ap.add_argument("--ttl", type=int, default=900)
-    ap.add_argument("--no-sound", action="store_true")
-    ap.add_argument("--keep", action="store_true")
-    args = ap.parse_args()
-    ttl = min(max(args.ttl, 10), MAX_TTL_SECONDS)
-    run(args.device, ttl, args.no_sound, args.keep)
+    _redirect_to_log()
+    try:
+        ap = argparse.ArgumentParser()
+        ap.add_argument("--device", type=int, default=0)
+        ap.add_argument("--ttl", type=int, default=900)
+        ap.add_argument("--no-sound", action="store_true")
+        ap.add_argument("--keep", action="store_true")
+        args = ap.parse_args()
+        ttl = min(max(args.ttl, 10), MAX_TTL_SECONDS)
+        run(args.device, ttl, args.no_sound, args.keep)
+    except SystemExit:
+        raise
+    except BaseException:
+        import traceback
+        traceback.print_exc()
+        sys.stderr.flush()
+        raise
 
 
 if __name__ == "__main__":
