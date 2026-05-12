@@ -1,6 +1,6 @@
 [project]
 name = "camclave"
-version = "0.1.0"
+version = "0.4.2"
 description = "Consent-gated webcam access for Claude Code and Codex CLI."
 readme = "README.md"
 requires-python = ">=3.10"
