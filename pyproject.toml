@@ -1,6 +1,6 @@
 [project]
 name = "camclave"
-version = "0.5.3"
+version = "0.6.0"
 description = "Consent-gated webcam access for Claude Code and Codex CLI."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -16,6 +16,9 @@ dependencies = [
     "opencv-python>=4.8",
     "Pillow>=10.0",
 ]
+
+[project.optional-dependencies]
+test = ["pytest>=8.0"]
 
 [project.scripts]
 camclave = "camclave:main"

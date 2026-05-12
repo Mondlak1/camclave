@@ -1,0 +1,70 @@
+name: ci
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  tests:
+    name: tests (${{ matrix.os }} / py${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install runtime + test deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install opencv-python Pillow pytest
+
+      - name: Run pytest
+        run: python -m pytest tests/ -v
+
+  integrity:
+    name: integrity audit (source-level safety claims)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: No video-writer call sites
+        # If grep matches anything, exit 1.
+        run: |
+          if grep -RnE 'cv2\.VideoWriter\s*\(' skill/scripts/*.py; then
+            echo "::error::cv2 video-writer call site found"
+            exit 1
+          fi
+      - name: No network imports
+        run: |
+          PATTERNS='^\s*(import urllib|from urllib|import requests|from requests|import socket|from socket|import http|from http|import httpx|from httpx|import aiohttp|from aiohttp)'
+          if grep -RnE "$PATTERNS" skill/scripts/*.py; then
+            echo "::error::network import found in skill/scripts/"
+            exit 1
+          fi
+
+  version-vs-tag:
+    name: pyproject.toml version matches git tag
+    # Only runs on tag pushes — drift on master is fine between releases.
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare tag vs pyproject version
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          PY_VERSION=$(grep -E '^version\s*=' pyproject.toml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "tag=$TAG  pyproject=$PY_VERSION"
+          if [ "$TAG" != "$PY_VERSION" ]; then
+            echo "::error::Tag v$TAG does not match pyproject.toml version $PY_VERSION"
+            exit 1
+          fi
