@@ -96,12 +96,13 @@ def _safe_out_path(raw: str) -> Path:
     # it silently, but the intent is suspicious — refuse explicitly.
     if ".." in expanded.replace("\\", "/").split("/"):
         raise SystemExit(f"camclave: --out rejected — '..' segments not allowed: {raw!r}")
-    p = Path(expanded).resolve()
-    # If the immediate parent is a symlink, refuse — defense against
-    # parent-dir symlink swap targeting attacker-chosen directories.
-    if p.parent.is_symlink():
-        raise SystemExit(f"camclave: --out rejected — parent directory is a symlink: {p.parent}")
-    return p
+    # Check the USER-PROVIDED parent for symlinkiness BEFORE .resolve(),
+    # because on POSIX .resolve() follows symlinks and would dissolve a
+    # symlinked parent dir into its real target — defeating the check.
+    raw_parent = Path(expanded).parent
+    if raw_parent.is_symlink():
+        raise SystemExit(f"camclave: --out rejected — parent directory is a symlink: {raw_parent}")
+    return Path(expanded).resolve()
 
 # Friendly names of every property the daemon will accept. Kept in sync with
 # ADJUST_PROPS in preview_daemon.py.
