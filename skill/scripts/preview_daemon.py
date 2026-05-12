@@ -43,12 +43,36 @@ RED_BRIGHT = "#ff2a2a"
 
 
 def open_camera(device: int) -> cv2.VideoCapture:
-    cap = cv2.VideoCapture(device, cv2.CAP_DSHOW) if os.name == "nt" else cv2.VideoCapture(device)
-    if not cap.isOpened():
-        raise RuntimeError(f"Could not open camera device {device}.")
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-    return cap
+    """Open a camera, trying the best Windows backends in order.
+
+    DirectShow (CAP_DSHOW) frequently can't enumerate physical webcams by
+    index on Windows 10/11 even though it "is generally available", so we
+    try Media Foundation (CAP_MSMF) first, then DSHOW, then leave the
+    choice to OpenCV. On non-Windows we just use the default backend.
+    """
+    backends: list[tuple[str, int]]
+    if os.name == "nt":
+        backends = [("MSMF", cv2.CAP_MSMF), ("DSHOW", cv2.CAP_DSHOW), ("ANY", cv2.CAP_ANY)]
+    else:
+        backends = [("ANY", cv2.CAP_ANY)]
+    errors: list[str] = []
+    for name, backend in backends:
+        cap = cv2.VideoCapture(device, backend)
+        if not cap.isOpened():
+            errors.append(f"{name}: cap.isOpened()=False")
+            cap.release()
+            continue
+        ok, _ = cap.read()
+        if not ok:
+            errors.append(f"{name}: opened but cap.read() returned no frame")
+            cap.release()
+            continue
+        # Don't force resolution post-open: changing format mid-stream destabilises
+        # MSMF and triggers matrix-stride assertions on subsequent reads.
+        return cap
+    raise RuntimeError(
+        f"Could not open camera device {device}. Tried: " + "; ".join(errors)
+    )
 
 
 def beep(suppress: bool) -> None:

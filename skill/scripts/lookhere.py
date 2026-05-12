@@ -192,15 +192,25 @@ def cmd_devices(_args: argparse.Namespace) -> None:
     import cv2
 
     print("lookhere: probing camera indices 0..5 (may briefly flash other cameras)")
+    if os.name == "nt":
+        backends = [("MSMF", cv2.CAP_MSMF), ("DSHOW", cv2.CAP_DSHOW)]
+    else:
+        backends = [("ANY", cv2.CAP_ANY)]
     for i in range(6):
-        cap = cv2.VideoCapture(i, cv2.CAP_DSHOW) if os.name == "nt" else cv2.VideoCapture(i)
-        opens = cap.isOpened()
-        ok = False
-        if opens:
-            ok, _ = cap.read()
-        cap.release()
-        status = "live" if ok else ("opens but no frame" if opens else "—")
-        print(f"  device {i}: {status}")
+        result = "—"
+        for name, backend in backends:
+            cap = cv2.VideoCapture(i, backend)
+            opens = cap.isOpened()
+            ok = False
+            if opens:
+                ok, _ = cap.read()
+            cap.release()
+            if ok:
+                result = f"live via {name}"
+                break
+            if opens and result == "—":
+                result = f"opens but no frame ({name})"
+        print(f"  device {i}: {result}")
 
 
 def main() -> None:
