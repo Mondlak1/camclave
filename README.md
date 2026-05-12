@@ -6,6 +6,13 @@
 
 **A consent-gated webcam plugin for [Claude Code](https://claude.ai/code) and [Codex CLI](https://github.com/openai/codex).** Point your camera at a breadboard, a 3D print, an instrument, a paper schematic — and your AI agent can actually see it. One still frame at a time, only while a visible red "CAMERA ACTIVE" window is on your screen.
 
+<p align="center">
+  <video src="https://github.com/Mondlak1/camclave/raw/master/assets/demo.mp4" controls width="720" muted autoplay loop>
+    Your browser doesn't support the video tag.
+    <a href="assets/demo.mp4">Watch the demo (1.5 MB mp4)</a>
+  </video>
+</p>
+
 [![CI](https://github.com/Mondlak1/camclave/actions/workflows/ci.yml/badge.svg)](https://github.com/Mondlak1/camclave/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org)
