@@ -1,28 +1,28 @@
 ---
-name: lookhere
+name: camclave
 description: Consent-gated webcam access so the agent can see frames from the user's camera while the user watches a live, always-on-top preview. Use for hardware testing, OCR, plant logs, posture coaching, instrument reading, etc. Captures only happen on demand; every capture flashes the preview.
-trigger: /lookhere
+trigger: /camclave
 license: MIT
 ---
 
-# lookhere
+# camclave
 
-`lookhere` lets you see a single still frame from the user's webcam — never a video stream. The user must have explicitly run `lookhere start` to consent to this session; otherwise capture refuses.
+`camclave` lets you see a single still frame from the user's webcam — never a video stream. The user must have explicitly run `camclave start` to consent to this session; otherwise capture refuses.
 
 ## How to use it (agent-side)
 
 **Before calling anything, check the session is active:**
 
 ```
-lookhere status
+camclave status
 ```
 
-If no session is active, do **not** retry. Tell the user: "I need to see your camera. Please run `lookhere start` in another terminal, then ask me again." That is the consent contract — the agent never instructs the user to start the session as part of an in-flow action; the user must initiate it.
+If no session is active, do **not** retry. Tell the user: "I need to see your camera. Please run `camclave start` in another terminal, then ask me again." That is the consent contract — the agent never instructs the user to start the session as part of an in-flow action; the user must initiate it.
 
 **To grab one frame** (most common):
 
 ```
-lookhere capture
+camclave capture
 ```
 
 Prints an absolute PNG path on stdout. Read the PNG with your image-reading tool. The preview window flashes white and beeps the moment the frame is captured.
@@ -30,15 +30,15 @@ Prints an absolute PNG path on stdout. Read the PNG with your image-reading tool
 **To watch over time** (e.g. 3D print baby-sitting, plant logging):
 
 ```
-lookhere snapshots --every 30s --duration 10m --out /tmp/latest.png
+camclave snapshots --every 30s --duration 10m --out /tmp/latest.png
 ```
 
-The daemon overwrites `--out` on every interval. Re-read the file when you want a fresh look. Stop early with `lookhere snapshots-stop`.
+The daemon overwrites `--out` on every interval. Re-read the file when you want a fresh look. Stop early with `camclave snapshots-stop`.
 
 **Other:**
 
 ```
-lookhere devices   # probe camera indices if device 0 isn't right
+camclave devices   # probe camera indices if device 0 isn't right
 ```
 
 ## Rules the agent must follow

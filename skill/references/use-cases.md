@@ -7,8 +7,8 @@ Patterns for common tasks. The user-facing examples sit in the top-level `README
 User: "Is the LED on pin D5 lit?"
 
 ```
-lookhere status                # confirm session
-lookhere capture               # -> /path/to/frame.png
+camclave status                # confirm session
+camclave capture               # -> /path/to/frame.png
 # Read the PNG with your image tool, then answer.
 ```
 
@@ -21,7 +21,7 @@ Ask the user to move/rotate between captures. Don't burst-capture — wait for c
 ## Periodic monitoring (3D prints, plants, posture)
 
 ```
-lookhere snapshots --every 30s --duration 4h --out /tmp/print.png
+camclave snapshots --every 30s --duration 4h --out /tmp/print.png
 ```
 
 Read `/tmp/print.png` whenever you want a fresh look — typically when the user pings you ("how is it going?") or on your own when you're actively babysitting the task. Don't read more often than the snapshot interval — the file won't have changed.
@@ -29,7 +29,7 @@ Read `/tmp/print.png` whenever you want a fresh look — typically when the user
 When done:
 
 ```
-lookhere snapshots-stop
+camclave snapshots-stop
 ```
 
 ## Reading instruments / displays / handwriting

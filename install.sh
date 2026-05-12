@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# lookhere install.sh — macOS / Linux installer
+# camclave install.sh — macOS / Linux installer
 set -euo pipefail
 
 repo="$(cd "$(dirname "$0")" && pwd)"
 skill_src="$repo/skill"
 [[ -d "$skill_src" ]] || { echo "skill/ not found next to install.sh"; exit 1; }
 
-step() { printf "\033[36m[lookhere]\033[0m %s\n" "$*"; }
-warn() { printf "\033[33m[lookhere]\033[0m %s\n" "$*"; }
+step() { printf "\033[36m[camclave]\033[0m %s\n" "$*"; }
+warn() { printf "\033[33m[camclave]\033[0m %s\n" "$*"; }
 
 # 1. Python deps
 step "Installing Python dependencies (opencv-python, Pillow)..."
@@ -18,7 +18,7 @@ command -v "$python_bin" >/dev/null || { echo "Python 3.10+ not found"; exit 1; 
 # 2. Install skill into both agent skill dirs
 install_skill() {
     local target_root="$1"
-    local target="$target_root/lookhere"
+    local target="$target_root/camclave"
     mkdir -p "$target_root"
     if [[ -e "$target" || -L "$target" ]]; then
         warn "Existing $target removed."
@@ -39,10 +39,10 @@ install_skill "$HOME/.codex/skills"
 # 3. Shim on PATH
 bin_dir="$HOME/.local/bin"
 mkdir -p "$bin_dir"
-shim="$bin_dir/lookhere"
+shim="$bin_dir/camclave"
 cat > "$shim" <<EOF
 #!/usr/bin/env bash
-exec "$python_bin" "$skill_src/scripts/lookhere.py" "\$@"
+exec "$python_bin" "$skill_src/scripts/camclave.py" "\$@"
 EOF
 chmod +x "$shim"
 
@@ -52,5 +52,5 @@ case ":$PATH:" in
 esac
 
 echo
-step "installed. Try:  lookhere start"
-step "Then in Claude Code or Codex: 'use lookhere to show me what I'm holding'."
+step "installed. Try:  camclave start"
+step "Then in Claude Code or Codex: 'use camclave to show me what I'm holding'."

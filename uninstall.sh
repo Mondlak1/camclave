@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
-echo "[lookhere] uninstalling..."
-for p in "$HOME/.claude/skills/lookhere" "$HOME/.codex/skills/lookhere" "$HOME/.local/bin/lookhere"; do
+echo "[camclave] uninstalling..."
+for p in "$HOME/.claude/skills/camclave" "$HOME/.codex/skills/camclave" "$HOME/.local/bin/camclave"; do
     if [[ -e "$p" || -L "$p" ]]; then
         rm -rf "$p"
         echo "  removed $p"
     fi
 done
-echo "[lookhere] done. ~/.lookhere/ kept for any captures you marked --keep."
+echo "[camclave] done. ~/.camclave/ kept for any captures you marked --keep."

@@ -1,9 +1,9 @@
 """Preview daemon: owns the camera, runs the always-on-top window,
 honors capture and snapshot requests from the CLI.
 
-This is a long-running process. The CLI's `lookhere start` spawns it
+This is a long-running process. The CLI's `camclave start` spawns it
 detached, then exits. The session ends when (a) the user closes the
-window, (b) the TTL expires, or (c) `lookhere stop` kills the pid.
+window, (b) the TTL expires, or (c) `camclave stop` kills the pid.
 """
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ from session import (  # noqa: E402
     CAPTURE_RESPONSE,
     CAPTURES_DIR,
     LATEST_FRAME,
-    LOOKHERE_DIR,
+    CAMCLAVE_DIR,
     MAX_TTL_SECONDS,
     SNAPSHOT_CONFIG,
     Session,
@@ -105,7 +105,7 @@ def run(device: int, ttl: int, no_sound: bool, keep: bool) -> None:
     cap = open_camera(device)
 
     root = tk.Tk()
-    root.title("lookhere — CAMERA ACTIVE")
+    root.title("camclave — CAMERA ACTIVE")
     root.attributes("-topmost", True)
     root.configure(bg=RED)
 
@@ -139,7 +139,7 @@ def run(device: int, ttl: int, no_sound: bool, keep: bool) -> None:
 
     header = tk.Label(
         outer,
-        text="● CAMERA ACTIVE — lookhere",
+        text="● CAMERA ACTIVE — camclave",
         bg=RED,
         fg="white",
         font=("Segoe UI", 10, "bold"),
@@ -210,7 +210,7 @@ def run(device: int, ttl: int, no_sound: bool, keep: bool) -> None:
             return
         every = float(cfg.get("every", 0))
         until = float(cfg.get("until", 0))
-        out_path = cfg.get("out_path") or str(LOOKHERE_DIR / "latest.png")
+        out_path = cfg.get("out_path") or str(CAMCLAVE_DIR / "latest.png")
         if every != snapshot_state["every"] or until != snapshot_state["until"]:
             snapshot_state["every"] = every
             snapshot_state["until"] = until

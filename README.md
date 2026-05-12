@@ -1,106 +1,116 @@
 <div align="center">
 
-# `lookhere`
+# `camclave`
 
-### give Claude Code and Codex CLI your webcam — on your terms
+### Connect your camera to an AI agent. Solve hardware in real life.
+
+**A consent-gated webcam plugin for [Claude Code](https://claude.ai/code) and [Codex CLI](https://github.com/openai/codex).** Point your camera at a breadboard, a 3D print, an instrument, a paper schematic — and your AI agent can actually see it. One still frame at a time, only while a visible red "CAMERA ACTIVE" window is on your screen.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org)
 [![Works with Claude Code](https://img.shields.io/badge/Claude%20Code-skill-7c3aed.svg)](https://claude.ai/code)
 [![Works with Codex CLI](https://img.shields.io/badge/Codex%20CLI-skill-10a37f.svg)](https://github.com/openai/codex)
-[![Status: v0.1](https://img.shields.io/badge/status-v0.1-orange.svg)](#)
+[![Hardware automation](https://img.shields.io/badge/use-hardware%20automation-ff2a2a.svg)](#what-you-can-actually-do-with-this)
 
-**Type `lookhere start` → a red "CAMERA ACTIVE" window pops up. From now until you close it, the agent can grab one still frame at a time. Every frame flashes the preview. Close the window or run `lookhere stop` and the camera is gone.**
+```bash
+camclave start            # ← consent action. Red "CAMERA ACTIVE" window appears.
+# now ask Claude Code or Codex:
+#   "read the multimeter on my bench"
+#   "is the LED on D5 lit?"
+#   "watch my 3D print and ping me if the first layer fails"
+camclave stop             # camera off. Captures wiped.
+```
 
 </div>
 
 ---
 
-## What is this?
+## The problem
 
-A tiny dual-install skill plugin for [Claude Code](https://claude.ai/code) and [Codex CLI](https://github.com/openai/codex). Once you give consent (by typing `lookhere start`), the agent can call `lookhere capture` and read back a PNG of what your webcam sees. The agent never gets a video stream — only single frames you can correlate with the live preview on your screen.
+Most of the time you want help from an AI agent, the agent already has everything it needs — your files, your terminal, your codebase. But the moment your problem is **physical** — wiring, soldering, a stuck print, an instrument reading, a label, a handwritten note — the loop breaks. You're snapping phone photos one by one, uploading them, describing what's in them. The agent can't *look*.
 
-The CLI command name **is** the consent signal. There is no "remember this allow" toggle. Camera stays off until you ask.
+`camclave` closes that loop. The agent calls a CLI, gets back a PNG path, reads the PNG with its image tool, and answers. You see exactly what it sees, on screen, the moment it sees it.
 
-## Why?
+## How it works
 
-Because most useful "show me your work" tasks aren't typing problems — they're *physical* problems. Showing the agent your breadboard, your multimeter, your handwritten notes, your plant, your posture. Built-in screen-share is way too much, and uploading photos one by one is friction. `lookhere` is the smallest possible surface for "the agent can see what I'm pointing at, but only when I say so."
+```
+┌──────────────────────────────────┐   ┌──────────────────────────┐
+│ Terminal (Claude Code / Codex)   │   │ Preview window (always   │
+│   → camclave capture             │   │ on top, red border,      │
+│   ← /path/to/frame.png           │   │ "● CAMERA ACTIVE")       │
+│   → agent reads PNG, answers     │ ◄─┤  flashes white +         │
+└──────────────────────────────────┘   │  beeps on every capture  │
+                                       └──────────────────────────┘
+```
 
-## Quick install (Windows)
+The CLI command name **is the consent signal.** There is no remembered "allow camera" toggle. The camera is off until you type `camclave start`. The agent never starts the session itself.
 
+## Install
+
+**Windows:**
 ```powershell
-git clone https://github.com/Mondlak1/lookhere.git
-cd lookhere
+git clone https://github.com/Mondlak1/camclave.git
+cd camclave
 pwsh ./install.ps1
 ```
 
-## Quick install (macOS / Linux)
-
+**macOS / Linux:**
 ```bash
-git clone https://github.com/Mondlak1/lookhere.git
-cd lookhere
+git clone https://github.com/Mondlak1/camclave.git
+cd camclave
 bash ./install.sh
 ```
 
 The installer:
 1. `pip install --user opencv-python Pillow`
-2. Symlinks `skill/` into `~/.claude/skills/lookhere/` **and** `~/.codex/skills/lookhere/` (copy fallback on Windows without symlink privilege).
-3. Writes a `lookhere` shim onto your PATH (`~/.local/bin/lookhere` or `%USERPROFILE%\.lookhere\bin\lookhere.cmd`).
+2. Symlinks `skill/` into **both** `~/.claude/skills/camclave/` and `~/.codex/skills/camclave/` (copy fallback on Windows without symlink privilege).
+3. Puts a `camclave` shim on your PATH.
 
-## How to use it
-
-```bash
-# 1. Open a terminal and consent.
-lookhere start
-
-#     → a red "CAMERA ACTIVE" window appears, top-most, with a 15-minute timer.
-
-# 2. In your Claude Code or Codex session, ask away:
-#     "Read the multimeter on my desk"
-#     "Is the LED on D5 lit?"
-#     "Transcribe my handwritten note"
-
-# 3. Done? Close the window or:
-lookhere stop
-```
-
-### Subcommands
+## CLI surface
 
 | Command | What it does |
 | --- | --- |
-| `lookhere start [--device 0] [--ttl 15m] [--no-sound] [--keep]` | Opens the preview daemon. **This is the consent action.** |
-| `lookhere status` | Shows whether a session is active and how much TTL is left. |
-| `lookhere capture [--out PATH]` | Grabs one frame, prints absolute PNG path. The preview flashes. |
-| `lookhere snapshots --every 30s --duration 10m [--out PATH]` | Writes a fresh PNG every interval; agent re-reads on demand. |
-| `lookhere snapshots-stop` | Cancel snapshot mode early. |
-| `lookhere stop` | Kill the daemon, delete captures (unless `--keep` was set at start). |
-| `lookhere devices` | Probe camera indices 0..5. |
+| `camclave start [--device 0] [--ttl 15m] [--no-sound] [--keep]` | **Consent action.** Opens the preview daemon. Default TTL 15 min, hard cap 60 min. |
+| `camclave status` | Active? How much TTL left? Is snapshot mode running? |
+| `camclave capture [--out PATH]` | Grabs one frame; prints absolute PNG path on stdout. Preview flashes. |
+| `camclave snapshots --every 30s --duration 10m [--out PATH]` | Periodic mode for long-running tasks. Overwrites one file. |
+| `camclave snapshots-stop` | Cancel snapshot mode early. |
+| `camclave stop` | Kill the daemon. Captures auto-deleted unless `--keep` was set. |
+| `camclave devices` | Probe camera indices 0..5, reporting which OpenCV backend works. |
 
 ## What you can actually do with this
 
-> Pick a vibe.
+`camclave` is built for **hardware automation through AI** — handing the agent eyes for the parts of your workflow that aren't text:
 
-- 🔌 **Breadboard buddy** — *"Is the LED on D5 lit? Does the current draw on the multimeter look right?"*
-- 📟 **Instrument reader** — multimeters, oscilloscopes, kitchen scales, smart-meter LCDs. The agent OCRs the value and logs it.
-- 🖨️ **3D-print babysitter** — `snapshots --every 30s --duration 4h`. The agent pings you when the first layer fails or a stringy mess starts.
-- 🔬 **Soldering inspector** — close-up shots, agent flags bridges, tombstoning, cold joints.
-- 📓 **Lab-notebook digitizer** — hold up a page, agent transcribes to markdown with tables intact.
-- 🪴 **Plant log** — one snapshot per day, agent tracks leaf-color drift and flags wilting.
-- 🪑 **Posture coach** — `snapshots --every 2m --duration 1h`, agent nudges when you slouch.
-- 🎥 **Setup verifier** — *"is my ring light on?"*, *"is my camera framed correctly for the call?"*
-- 📦 **Package label capture** — agent files contents/tracking-numbers into a spreadsheet.
+- 🔌 **Breadboard debugging** — *"Is the LED on D5 lit? Does the current draw on the multimeter look right? Trace the path of the red jumper."*
+- 📟 **Instrument reading** — multimeters, oscilloscopes, kitchen scales, smart-meter LCDs, power-supply displays. The agent OCRs the value and logs it for you.
+- 🖨️ **3D-print monitoring** — `snapshots --every 30s --duration 4h`, agent pings you when the first layer fails or stringing starts.
+- 🔬 **Soldering inspection** — close-up shots, agent flags bridges, tombstoning, cold joints, missing pads.
+- 📓 **Lab-notebook digitization** — hold a handwritten page up, agent transcribes to markdown with tables intact.
+- 🪴 **Plant log** — one snapshot per day, agent tracks leaf-color drift and flags wilting before you notice.
+- 🪑 **Posture / ergonomics coaching** — `snapshots --every 2m --duration 1h`, agent nudges when you slouch.
+- 🎥 **Pre-call setup check** — *"is my ring light on? is my camera framed correctly?"*
+- 📦 **Package label capture** — agent files contents and tracking numbers into a spreadsheet.
 - 🤝 **Pair-programming with paper** — point the camera at a circuit diagram while you code firmware in the same chat.
+- 🤖 **Robotics & maker QA** — verify servo positions, gripper alignment, sensor wiring; the agent reads visual state into the loop.
+- 🧪 **Bench-science assistant** — read the gel, count colonies on a plate, log microscope eyepiece images.
 
-## Safety in one screen
+## Safety — in one screen
 
-- Zero network code. Frames never leave your machine.
-- Camera is off until you type `lookhere start`. There is no remembered consent.
-- Default TTL is **15 minutes**; the hard cap is 60.
-- Always-on-top red window labelled **CAMERA ACTIVE** while the session is live.
-- Every capture **flashes white** in the preview + system beep (suppressible with `--no-sound`, the flash is not).
-- Captures live in `~/.lookhere/captures/` and are wiped on `stop` unless you pass `--keep`.
+- **Zero network code.** Frames never leave your machine. Grep the repo for `urllib`/`requests`/`http`/`socket` — none.
+- **No persistent consent.** Camera is off until you type `camclave start`.
+- **Default TTL 15 min, hard cap 60 min.** After expiry, capture refuses; the daemon shuts itself down.
+- **Always-on-top red window** labelled **● CAMERA ACTIVE** while the session is live.
+- **Every capture flashes white** in the preview window + system beep. The audible beep is suppressible (`--no-sound`); the flash is not.
+- **Captures wiped on stop** unless you explicitly pass `--keep`. They live in `~/.camclave/captures/`.
 
-Full details: [`skill/references/safety.md`](skill/references/safety.md) and [`skill/references/consent.md`](skill/references/consent.md).
+Full contracts: [`skill/references/consent.md`](skill/references/consent.md) and [`skill/references/safety.md`](skill/references/safety.md).
+
+## Why a CLI tool instead of an MCP server / browser thing?
+
+Because the consent gate has to be **on the user's terminal**, not negotiated over a transport. Typing the word `camclave` into your own shell is unambiguous. An MCP-mediated camera tool would lose that property — the agent could invoke it on its own.
+
+A bonus: this works identically in Claude Code, Codex CLI, and any future agent that can shell out and read a PNG. One install, two agents.
 
 ## Uninstall
 
@@ -109,12 +119,16 @@ pwsh ./uninstall.ps1   # Windows
 bash ./uninstall.sh    # macOS / Linux
 ```
 
-Removes the skill symlinks/copies and the PATH shim. Leaves `~/.lookhere/` so you can inspect any captures you kept; delete it manually if you don't want it.
+Removes both skill installs and the PATH shim. Leaves `~/.camclave/` so you can inspect any captures you marked `--keep`.
 
 ## Contributing
 
-PRs welcome — especially additional safety rails, OS-specific camera quirks, and richer agent reference docs. Open an issue first if you want to add a non-trivial feature so we can keep the surface small.
+PRs welcome — especially additional safety rails, OS-specific camera quirks, and richer agent reference docs. Open an issue first for non-trivial features so we keep the surface small.
 
 ## License
 
 MIT. See [`LICENSE`](LICENSE).
+
+---
+
+<sub>**Tags:** AI agent camera, Claude Code webcam plugin, Codex CLI camera skill, hardware automation, LLM computer vision, agent vision tool, breadboard debugging AI, instrument reading OCR, 3D print monitoring, agentic hardware testing.</sub>

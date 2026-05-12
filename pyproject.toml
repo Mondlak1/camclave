@@ -1,5 +1,5 @@
 [project]
-name = "lookhere"
+name = "camclave"
 version = "0.1.0"
 description = "Consent-gated webcam access for Claude Code and Codex CLI."
 readme = "README.md"
@@ -18,11 +18,11 @@ dependencies = [
 ]
 
 [project.scripts]
-lookhere = "lookhere:main"
+camclave = "camclave:main"
 
 [project.urls]
-Homepage = "https://github.com/Mondlak1/lookhere"
-Issues = "https://github.com/Mondlak1/lookhere/issues"
+Homepage = "https://github.com/Mondlak1/camclave"
+Issues = "https://github.com/Mondlak1/camclave/issues"
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -30,4 +30,4 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 package-dir = { "" = "skill/scripts" }
-py-modules = ["lookhere", "preview_daemon", "session"]
+py-modules = ["camclave", "preview_daemon", "session"]

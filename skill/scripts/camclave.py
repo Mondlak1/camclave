@@ -1,4 +1,4 @@
-"""lookhere CLI — the consent-gated entry point.
+"""camclave CLI — the consent-gated entry point.
 
 Subcommands:
     start             open the preview daemon (this is the consent action)
@@ -27,7 +27,7 @@ if str(HERE) not in sys.path:
 from session import (  # noqa: E402
     CAPTURE_REQUEST,
     CAPTURE_RESPONSE,
-    LOOKHERE_DIR,
+    CAMCLAVE_DIR,
     MAX_TTL_SECONDS,
     SESSION_FILE,
     SNAPSHOT_CONFIG,
@@ -44,18 +44,18 @@ def parse_duration(s: str) -> int:
     for n, unit in re.findall(r"(\d+)\s*([smhSMH])", s):
         total += int(n) * {"s": 1, "m": 60, "h": 3600}[unit.lower()]
     if total == 0:
-        raise SystemExit(f"lookhere: could not parse duration {s!r}")
+        raise SystemExit(f"camclave: could not parse duration {s!r}")
     return total
 
 
 def cmd_start(args: argparse.Namespace) -> None:
     if active_session():
-        print("lookhere: a session is already active. Run `lookhere stop` first.", file=sys.stderr)
+        print("camclave: a session is already active. Run `camclave stop` first.", file=sys.stderr)
         sys.exit(2)
     clear_session()
     ttl_s = parse_duration(args.ttl)
     if ttl_s > MAX_TTL_SECONDS:
-        print(f"lookhere: ttl capped to {MAX_TTL_SECONDS}s (hard max)", file=sys.stderr)
+        print(f"camclave: ttl capped to {MAX_TTL_SECONDS}s (hard max)", file=sys.stderr)
         ttl_s = MAX_TTL_SECONDS
 
     daemon = HERE / "preview_daemon.py"
@@ -79,13 +79,13 @@ def cmd_start(args: argparse.Namespace) -> None:
     s = active_session()
     if not s:
         print(
-            "lookhere: failed to start preview daemon. Is the camera in use by another app, "
+            "camclave: failed to start preview daemon. Is the camera in use by another app, "
             "or are opencv-python/Pillow missing? Try `pip install opencv-python pillow`.",
             file=sys.stderr,
         )
         sys.exit(3)
-    print(f"lookhere: preview started — device {s.device}, ttl {s.ttl_seconds}s, pid {s.pid}")
-    print('a red-bordered "CAMERA ACTIVE" window is now visible. Close it (or run `lookhere stop`) to end the session.')
+    print(f"camclave: preview started — device {s.device}, ttl {s.ttl_seconds}s, pid {s.pid}")
+    print('a red-bordered "CAMERA ACTIVE" window is now visible. Close it (or run `camclave stop`) to end the session.')
 
 
 def cmd_status(_args: argparse.Namespace) -> None:
@@ -93,11 +93,11 @@ def cmd_status(_args: argparse.Namespace) -> None:
     if not s:
         if SESSION_FILE.exists():
             clear_session()
-            print("lookhere: stale session file removed. No live daemon.")
+            print("camclave: stale session file removed. No live daemon.")
         else:
-            print("lookhere: no active session.")
+            print("camclave: no active session.")
         return
-    print(f"lookhere: ACTIVE — device {s.device}, pid {s.pid}, {s.remaining_seconds}s remaining")
+    print(f"camclave: ACTIVE — device {s.device}, pid {s.pid}, {s.remaining_seconds}s remaining")
     if SNAPSHOT_CONFIG.exists():
         try:
             cfg = json.loads(SNAPSHOT_CONFIG.read_text())
@@ -114,7 +114,7 @@ def cmd_capture(args: argparse.Namespace) -> None:
     s = active_session()
     if not s:
         print(
-            "lookhere: no active session. The user must run `lookhere start` first "
+            "camclave: no active session. The user must run `camclave start` first "
             "(this is the consent action).",
             file=sys.stderr,
         )
@@ -146,35 +146,35 @@ def cmd_capture(args: argparse.Namespace) -> None:
         CAPTURE_REQUEST.unlink()
     except FileNotFoundError:
         pass
-    print("lookhere: capture timed out — preview daemon may be stalled.", file=sys.stderr)
+    print("camclave: capture timed out — preview daemon may be stalled.", file=sys.stderr)
     sys.exit(5)
 
 
 def cmd_snapshots(args: argparse.Namespace) -> None:
     s = active_session()
     if not s:
-        print("lookhere: no active session. Run `lookhere start` first.", file=sys.stderr)
+        print("camclave: no active session. Run `camclave start` first.", file=sys.stderr)
         sys.exit(4)
     every = max(1, parse_duration(args.every))
     duration = parse_duration(args.duration)
-    out = Path(args.out).expanduser().resolve() if args.out else (LOOKHERE_DIR / "latest.png")
+    out = Path(args.out).expanduser().resolve() if args.out else (CAMCLAVE_DIR / "latest.png")
     cfg = {"every": every, "until": time.time() + duration, "out_path": str(out)}
     SNAPSHOT_CONFIG.write_text(json.dumps(cfg))
-    print(f"lookhere: snapshot mode on — every {every}s for {duration}s, writing {out}")
+    print(f"camclave: snapshot mode on — every {every}s for {duration}s, writing {out}")
 
 
 def cmd_snapshots_stop(_args: argparse.Namespace) -> None:
     if SNAPSHOT_CONFIG.exists():
         SNAPSHOT_CONFIG.write_text(json.dumps({"disabled": True}))
-        print("lookhere: snapshot mode stopped.")
+        print("camclave: snapshot mode stopped.")
     else:
-        print("lookhere: snapshot mode wasn't active.")
+        print("camclave: snapshot mode wasn't active.")
 
 
 def cmd_stop(_args: argparse.Namespace) -> None:
     s = read_session()
     if not s:
-        print("lookhere: no session to stop.")
+        print("camclave: no session to stop.")
         return
     try:
         if os.name == "nt":
@@ -185,13 +185,13 @@ def cmd_stop(_args: argparse.Namespace) -> None:
         pass
     time.sleep(0.5)
     clear_session()
-    print("lookhere: stopped.")
+    print("camclave: stopped.")
 
 
 def cmd_devices(_args: argparse.Namespace) -> None:
     import cv2
 
-    print("lookhere: probing camera indices 0..5 (may briefly flash other cameras)")
+    print("camclave: probing camera indices 0..5 (may briefly flash other cameras)")
     if os.name == "nt":
         backends = [("MSMF", cv2.CAP_MSMF), ("DSHOW", cv2.CAP_DSHOW)]
     else:
@@ -215,7 +215,7 @@ def cmd_devices(_args: argparse.Namespace) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(
-        prog="lookhere",
+        prog="camclave",
         description="Consent-gated webcam access for Claude Code + Codex CLI.",
     )
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -231,13 +231,13 @@ def main() -> None:
     p.set_defaults(func=cmd_status)
 
     p = sub.add_parser("capture", help="grab one frame; prints absolute PNG path on stdout")
-    p.add_argument("--out", help="optional explicit output path; default ~/.lookhere/captures/")
+    p.add_argument("--out", help="optional explicit output path; default ~/.camclave/captures/")
     p.set_defaults(func=cmd_capture)
 
     p = sub.add_parser("snapshots", help="periodic snapshot mode")
     p.add_argument("--every", default="5s")
     p.add_argument("--duration", default="2m")
-    p.add_argument("--out", help="snapshot output path (default ~/.lookhere/latest.png)")
+    p.add_argument("--out", help="snapshot output path (default ~/.camclave/latest.png)")
     p.set_defaults(func=cmd_snapshots)
 
     p = sub.add_parser("snapshots-stop", help="turn snapshot mode off early")

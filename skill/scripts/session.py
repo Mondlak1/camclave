@@ -1,7 +1,7 @@
-"""Session token + IPC paths for lookhere.
+"""Session token + IPC paths for camclave.
 
 The session.json on disk is the consent token. It's created by the preview
-daemon when the user runs `lookhere start` and is checked on every capture.
+daemon when the user runs `camclave start` and is checked on every capture.
 If the daemon process is dead or the TTL has expired, capture refuses.
 """
 from __future__ import annotations
@@ -12,13 +12,13 @@ import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-LOOKHERE_DIR = Path.home() / ".lookhere"
-SESSION_FILE = LOOKHERE_DIR / "session.json"
-CAPTURES_DIR = LOOKHERE_DIR / "captures"
-LATEST_FRAME = LOOKHERE_DIR / "latest.jpg"
-CAPTURE_REQUEST = LOOKHERE_DIR / ".capture-request"
-CAPTURE_RESPONSE = LOOKHERE_DIR / ".capture-response"
-SNAPSHOT_CONFIG = LOOKHERE_DIR / "snapshot-config.json"
+CAMCLAVE_DIR = Path.home() / ".camclave"
+SESSION_FILE = CAMCLAVE_DIR / "session.json"
+CAPTURES_DIR = CAMCLAVE_DIR / "captures"
+LATEST_FRAME = CAMCLAVE_DIR / "latest.jpg"
+CAPTURE_REQUEST = CAMCLAVE_DIR / ".capture-request"
+CAPTURE_RESPONSE = CAMCLAVE_DIR / ".capture-response"
+SNAPSHOT_CONFIG = CAMCLAVE_DIR / "snapshot-config.json"
 
 MAX_TTL_SECONDS = 60 * 60
 
@@ -46,7 +46,7 @@ class Session:
 
 
 def ensure_dirs() -> None:
-    LOOKHERE_DIR.mkdir(parents=True, exist_ok=True)
+    CAMCLAVE_DIR.mkdir(parents=True, exist_ok=True)
     CAPTURES_DIR.mkdir(parents=True, exist_ok=True)
 
 
