@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 80" width="480" height="160" role="img" aria-label="lookhere">
+  <defs>
+    <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#ff2a2a"/>
+      <stop offset="100%" stop-color="#7c3aed"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="236" height="76" rx="14" fill="#0b0b10" stroke="url(#g)" stroke-width="3"/>
+  <g transform="translate(20,18)">
+    <circle cx="22" cy="22" r="20" fill="none" stroke="#ff2a2a" stroke-width="3"/>
+    <circle cx="22" cy="22" r="8" fill="#ff2a2a"/>
+    <circle cx="22" cy="22" r="3" fill="#0b0b10"/>
+    <circle cx="34" cy="10" r="2.5" fill="#fff"/>
+  </g>
+  <text x="76" y="50" font-family="Segoe UI, Inter, system-ui, sans-serif" font-size="30" font-weight="700" fill="#ffffff">lookhere</text>
+</svg>
