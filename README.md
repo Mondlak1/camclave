@@ -83,7 +83,7 @@ The installer:
 | `camclave snapshots-stop` | Cancel snapshot mode early. |
 | `camclave adjust [--show] [--brightness 0.6] [--exposure -5] [--focus 120] ...` | Tweak the live camera's properties: brightness, contrast, saturation, hue, gain, exposure, focus, zoom, sharpness, gamma, auto_exposure, auto_focus, auto_wb, wb_temperature. `--show` prints current values. The CLI reports what the camera accepted vs. what you asked for. |
 | `camclave stop` | Kill the daemon. Captures auto-deleted unless `--keep` was set. |
-| `camclave devices` | Probe camera indices 0..5, reporting which OpenCV backend works. |
+| `camclave devices [--preview]` | Probe camera indices 0..5, reporting which OpenCV backend works. With `--preview`, also saves one PNG per working camera to `~/.camclave/device-<N>.png` so you can visually identify which is the laptop integrated cam vs. the USB webcam vs. a virtual cam, then `camclave start --device <N>`. |
 
 ## What you can actually do with this
 

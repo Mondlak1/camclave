@@ -330,29 +330,67 @@ def cmd_adjust(args: argparse.Namespace) -> None:
             print(f"  {name:<16} -> {actual}{note}")
 
 
-def cmd_devices(_args: argparse.Namespace) -> None:
+def cmd_devices(args: argparse.Namespace) -> None:
     import cv2
+
+    if active_session() and args.preview:
+        print(
+            "camclave: a session is active — probing will skip the device it's using. "
+            "(Other indices will still be previewed.)",
+            file=sys.stderr,
+        )
 
     print("camclave: probing camera indices 0..5 (may briefly flash other cameras)")
     if os.name == "nt":
         backends = [("MSMF", cv2.CAP_MSMF), ("DSHOW", cv2.CAP_DSHOW)]
     else:
         backends = [("ANY", cv2.CAP_ANY)]
+
+    previewed: list[tuple[int, str]] = []
+    if args.preview:
+        CAMCLAVE_DIR.mkdir(parents=True, exist_ok=True)
+
     for i in range(6):
         result = "—"
+        frame_for_preview = None
         for name, backend in backends:
             cap = cv2.VideoCapture(i, backend)
             opens = cap.isOpened()
             ok = False
             if opens:
-                ok, _ = cap.read()
+                ok, frame = cap.read()
+                if ok and args.preview and frame is not None and frame_for_preview is None:
+                    frame_for_preview = frame
             cap.release()
             if ok:
                 result = f"live via {name}"
                 break
             if opens and result == "—":
                 result = f"opens but no frame ({name})"
-        print(f"  device {i}: {result}")
+
+        if args.preview and frame_for_preview is not None:
+            out = CAMCLAVE_DIR / f"device-{i}.png"
+            try:
+                cv2.imwrite(str(out), frame_for_preview)
+                previewed.append((i, str(out)))
+                print(f"  device {i}: {result}  ->  {out}")
+            except Exception as e:
+                print(f"  device {i}: {result}  (preview write failed: {e})")
+        else:
+            print(f"  device {i}: {result}")
+
+    if args.preview:
+        if previewed:
+            print("")
+            print(
+                f"camclave: wrote {len(previewed)} thumbnail(s). "
+                f"Open them to match index -> physical camera, then run "
+                f"`camclave start --device <N>`."
+            )
+            print("(these files persist until next `devices --preview` overwrites them, "
+                  "or you delete them manually)")
+        else:
+            print("\ncamclave: no working cameras found.")
 
 
 def main() -> None:
@@ -403,6 +441,11 @@ def main() -> None:
     p.set_defaults(func=cmd_stop)
 
     p = sub.add_parser("devices", help="probe attached camera indices")
+    p.add_argument(
+        "--preview",
+        action="store_true",
+        help="also save one PNG per working camera to ~/.camclave/device-<N>.png so you can visually identify which is which",
+    )
     p.set_defaults(func=cmd_devices)
 
     args = ap.parse_args()
