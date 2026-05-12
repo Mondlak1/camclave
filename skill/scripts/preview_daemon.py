@@ -16,6 +16,9 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+# Quieter OpenCV — set before `import cv2` so it's picked up at init time.
+os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")
+
 import cv2
 import numpy as np
 import tkinter as tk

@@ -16,6 +16,7 @@ PNG. There is no streaming, no rolling buffer, no recording path.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import re
@@ -23,6 +24,10 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+
+# Quiet OpenCV's own log channel (backend availability warnings, etc.).
+# Done before any `import cv2` so the env var is read at module init.
+os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")
 
 HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
@@ -45,6 +50,38 @@ from session import (  # noqa: E402
     safe_read_json,
     safe_write_json,
 )
+
+
+@contextlib.contextmanager
+def _quiet_cv():
+    """Suppress C++-level chatter from OpenCV and DSHOW filter DLLs.
+
+    `cv2.VideoCapture` and its backends (especially NVIDIA Broadcast's
+    DSHOW filter) print warnings via the C stderr (fd 2), so masking
+    them needs an OS-level redirect — not just touching sys.stderr.
+    We dup fd 2 to nul for the duration of the camera probe, then
+    restore it. Our own Python prints go through sys.stderr which has
+    its own buffer (still works fine inside this block too — flushed
+    before the redirect, restored after).
+    """
+    try:
+        sys.stdout.flush()
+        sys.stderr.flush()
+    except Exception:
+        pass
+    devnull_fd = os.open(os.devnull, os.O_WRONLY)
+    saved_stderr_fd = os.dup(2)
+    saved_stdout_fd = os.dup(1)
+    try:
+        os.dup2(devnull_fd, 2)
+        os.dup2(devnull_fd, 1)
+        yield
+    finally:
+        os.dup2(saved_stderr_fd, 2)
+        os.dup2(saved_stdout_fd, 1)
+        os.close(saved_stderr_fd)
+        os.close(saved_stdout_fd)
+        os.close(devnull_fd)
 
 
 def _safe_out_path(raw: str) -> Path:
@@ -523,12 +560,13 @@ def cmd_doctor(_args: argparse.Namespace) -> None:
         backends = [("MSMF", cv2.CAP_MSMF), ("DSHOW", cv2.CAP_DSHOW)] if os.name == "nt" else [("ANY", cv2.CAP_ANY)]
         for i in range(4):
             for bname, b in backends:
-                cap = cv2.VideoCapture(i, b)
-                opens = cap.isOpened()
-                ok_read = False
-                if opens:
-                    ok_read, _ = cap.read()
-                cap.release()
+                with _quiet_cv():
+                    cap = cv2.VideoCapture(i, b)
+                    opens = cap.isOpened()
+                    ok_read = False
+                    if opens:
+                        ok_read, _ = cap.read()
+                    cap.release()
                 if ok_read:
                     nm = f" ({names[i]})" if i in names else ""
                     line("OK", f"device {i}: live via {bname}{nm}")
@@ -651,20 +689,21 @@ def cmd_devices(args: argparse.Namespace) -> None:
     for i in range(6):
         result = "—"
         frame_for_preview = None
-        for name, backend in backends:
-            cap = cv2.VideoCapture(i, backend)
-            opens = cap.isOpened()
-            ok = False
-            if opens:
-                ok, frame = cap.read()
-                if ok and args.preview and frame is not None and frame_for_preview is None:
-                    frame_for_preview = frame
-            cap.release()
-            if ok:
-                result = f"live via {name}"
-                break
-            if opens and result == "—":
-                result = f"opens but no frame ({name})"
+        with _quiet_cv():
+            for name, backend in backends:
+                cap = cv2.VideoCapture(i, backend)
+                opens = cap.isOpened()
+                ok = False
+                if opens:
+                    ok, frame = cap.read()
+                    if ok and args.preview and frame is not None and frame_for_preview is None:
+                        frame_for_preview = frame
+                cap.release()
+                if ok:
+                    result = f"live via {name}"
+                    break
+                if opens and result == "—":
+                    result = f"opens but no frame ({name})"
 
         name_suffix = f"  ({names[i]})" if i in names else ""
         if args.preview and frame_for_preview is not None:
