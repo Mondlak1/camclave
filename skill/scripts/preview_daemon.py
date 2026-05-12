@@ -590,7 +590,14 @@ def run(device: int, ttl: int, no_sound: bool, keep: bool) -> None:
 
         # Mode indicator: tells the user what camclave is doing right now
         # (the header above never changes — it's the safety signal).
-        if flash_remaining > 0:
+        # If a recent capture had a --reason, show it for ~4s after the flash
+        # — this is the visible audit trail that tells the user WHY the agent
+        # just took a frame.
+        reason_active = state.get("last_reason") and now < state.get("last_reason_until", 0)
+        if reason_active:
+            r = state["last_reason"]
+            mode_text, mode_fg = f"● capturing — {r}", PALETTE["dot_lo"]
+        elif flash_remaining > 0:
             mode_text, mode_fg = f"● capturing  ({state['captures']})", PALETTE["dot_lo"]
         elif snapshot_state["until"] and now < snapshot_state["until"]:
             every = int(snapshot_state["every"])

@@ -164,6 +164,22 @@ def cmd_status(_args: argparse.Namespace) -> None:
         except Exception:
             pass
 
+    # Show the last 5 captures from this session's audit log
+    if AUDIT_LOG.exists():
+        try:
+            lines = AUDIT_LOG.read_text(encoding="utf-8", errors="replace").splitlines()
+        except Exception:
+            lines = []
+        captures = [json.loads(L) for L in lines[-50:] if L.strip().startswith("{")]
+        captures = [c for c in captures if c.get("kind") == "capture"][-5:]
+        if captures:
+            print("\n  last captures:")
+            for c in captures:
+                ts = time.strftime("%H:%M:%S", time.localtime(c.get("ts", 0)))
+                reason = c.get("reason") or "(no reason given)"
+                print(f"    {ts}  {reason}")
+                print(f"             -> {c.get('path')}")
+
 
 def cmd_capture(args: argparse.Namespace) -> None:
     s = active_session()
@@ -181,6 +197,10 @@ def cmd_capture(args: argparse.Namespace) -> None:
     req: dict = {"token": s.token}
     if args.out:
         req["out_path"] = str(_safe_out_path(args.out))
+    if args.reason:
+        # Trim to a reasonable length so a wall of text can't crowd out the
+        # preview window. The reason is informational, not security-critical.
+        req["reason"] = args.reason.strip()[:120]
     safe_write_json(CAPTURE_REQUEST, req)
     deadline = time.time() + 5
     while time.time() < deadline:
@@ -412,6 +432,176 @@ def _device_names() -> dict[int, str]:
     return {}
 
 
+def cmd_doctor(_args: argparse.Namespace) -> None:
+    """One-screen install / runtime / integrity diagnostic.
+
+    Exits 0 if all REQUIRED checks pass; 1 if any required check failed.
+    Optional checks (pygrabber, etc.) are reported but don't fail the run.
+    """
+    ok_all = True
+
+    def line(status: str, label: str, detail: str = "") -> None:
+        # status: "OK" | "WARN" | "FAIL". ASCII-only so cp1252 consoles don't
+        # crash with UnicodeEncodeError.
+        marker = {"OK": "OK ", "WARN": "-- ", "FAIL": "!! "}[status]
+        end = "" if not detail else f"  -- {detail}"
+        print(f"  [{marker}] {label}{end}")
+
+    print("camclave doctor")
+    print(f"  v{_read_pyproject_version()}  on  {sys.platform}\n")
+
+    # 1. Python
+    print("python runtime")
+    line("OK", f"python {sys.version.split()[0]}", sys.executable)
+
+    # 2. Required deps
+    print("\ndependencies")
+    for pkg in ("cv2", "PIL"):
+        try:
+            __import__(pkg)
+            line("OK", pkg)
+        except Exception as e:
+            line("FAIL", pkg, f"import failed: {e}")
+            ok_all = False
+    try:
+        import pygrabber  # type: ignore  # noqa
+        line("OK", "pygrabber (optional, for device names)")
+    except Exception:
+        line("WARN", "pygrabber missing — device names won't show on Windows. Fix: pip install --user pygrabber")
+
+    # 3. Skill symlinks
+    print("\nskill discovery")
+    for label, path in [
+        ("Claude Code", Path.home() / ".claude" / "skills" / "camclave" / "SKILL.md"),
+        ("Codex CLI",   Path.home() / ".codex"  / "skills" / "camclave" / "SKILL.md"),
+    ]:
+        if path.exists():
+            line("OK", f"{label} skill installed", str(path))
+        else:
+            line("FAIL", f"{label} skill missing", f"expected {path}. Fix: re-run install.ps1 / install.sh")
+            ok_all = False
+
+    # 4. Shim on PATH (best-effort — only check expected location)
+    print("\nshim")
+    if os.name == "nt":
+        shim = Path.home() / ".camclave" / "bin" / "camclave.cmd"
+    else:
+        shim = Path.home() / ".local" / "bin" / "camclave"
+    if shim.exists():
+        line("OK", "shim present", str(shim))
+    else:
+        line("WARN", "shim missing", f"expected {shim}. Fix: re-run installer.")
+
+    # 5. ~/.camclave writable
+    print("\nstorage")
+    try:
+        CAMCLAVE_DIR.mkdir(parents=True, exist_ok=True)
+        test = CAMCLAVE_DIR / ".doctor-write-test"
+        test.write_text("ok")
+        test.unlink()
+        line("OK", f"{CAMCLAVE_DIR} is writable")
+    except Exception as e:
+        line("FAIL", "~/.camclave not writable", str(e))
+        ok_all = False
+
+    # 6. Cameras
+    print("\ncameras")
+    names = _device_names()
+    found_any = False
+    try:
+        import cv2
+        backends = [("MSMF", cv2.CAP_MSMF), ("DSHOW", cv2.CAP_DSHOW)] if os.name == "nt" else [("ANY", cv2.CAP_ANY)]
+        for i in range(4):
+            for bname, b in backends:
+                cap = cv2.VideoCapture(i, b)
+                opens = cap.isOpened()
+                ok_read = False
+                if opens:
+                    ok_read, _ = cap.read()
+                cap.release()
+                if ok_read:
+                    nm = f" ({names[i]})" if i in names else ""
+                    line("OK", f"device {i}: live via {bname}{nm}")
+                    found_any = True
+                    break
+    except Exception as e:
+        line("WARN", "camera probe error", str(e))
+    if not found_any:
+        line("WARN", "no working cameras found at indices 0..3")
+
+    # 7. Session state
+    print("\nsession")
+    s = active_session()
+    if s:
+        line("OK", "active session", f"device {s.device}, {s.remaining_seconds}s remaining")
+    else:
+        line("OK", "no active session (this is fine — `camclave start` to begin)")
+
+    # 8. Daemon log tail
+    print("\ndaemon log")
+    if DAEMON_LOG.exists() and DAEMON_LOG.stat().st_size > 0:
+        try:
+            lines = DAEMON_LOG.read_text(encoding="utf-8", errors="replace").splitlines()
+            if lines:
+                print(f"  ~/.camclave/daemon.log (last {min(len(lines), 10)} lines):")
+                for L in lines[-10:]:
+                    print(f"    {L}")
+        except Exception:
+            line("WARN", "couldn't read daemon.log")
+    else:
+        line("OK", "daemon.log empty / absent (good — no recent launch error)")
+
+    # 9. Integrity: confirm the safety claims on THIS installed copy.
+    # We look for actual usage (imports or call sites), not bare keywords —
+    # bare-keyword scans hit this very function's own search strings.
+    print("\nintegrity audit (on installed code)")
+    here = Path(__file__).resolve().parent
+    # Patterns built piece-by-piece so the search strings don't appear as
+    # literal substrings in this file (which would trigger self-matches).
+    cv2_writer = "cv2" + r"\." + "VideoWriter" + r"\s*\("
+    forbidden_patterns = [
+        (re.compile(cv2_writer), "video-recording call site"),
+        (re.compile(r"^\s*(import urllib|from urllib)", re.MULTILINE), "urllib (network)"),
+        (re.compile(r"^\s*(import requests|from requests)", re.MULTILINE), "requests (network)"),
+        (re.compile(r"^\s*(import socket|from socket)", re.MULTILINE), "socket (network)"),
+        (re.compile(r"^\s*(import http|from http)", re.MULTILINE), "http (network)"),
+    ]
+    py_files = list(here.glob("*.py"))
+    bad: list[tuple[str, str]] = []
+    for py in py_files:
+        try:
+            content = py.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+        for pattern, label in forbidden_patterns:
+            if pattern.search(content):
+                bad.append((py.name, label))
+    if bad:
+        for f, n in bad:
+            line("FAIL", f"{f}: {n}")
+        ok_all = False
+    else:
+        line("OK", f"no video-writer or network imports across {len(py_files)} .py files")
+
+    print("")
+    if ok_all:
+        print("camclave doctor: all required checks passed.")
+    else:
+        print("camclave doctor: one or more REQUIRED checks failed (see above).", file=sys.stderr)
+        sys.exit(1)
+
+
+def _read_pyproject_version() -> str:
+    try:
+        py = Path(__file__).resolve().parent.parent.parent / "pyproject.toml"
+        for L in py.read_text().splitlines():
+            if L.startswith("version"):
+                return L.split("=", 1)[1].strip().strip('"').strip("'")
+    except Exception:
+        pass
+    return "?"
+
+
 def cmd_devices(args: argparse.Namespace) -> None:
     import cv2
 
@@ -511,6 +701,11 @@ def main() -> None:
 
     p = sub.add_parser("capture", help="grab one frame; prints absolute PNG path on stdout")
     p.add_argument("--out", help="optional explicit output path; default ~/.camclave/captures/")
+    p.add_argument(
+        "--reason",
+        default="",
+        help='short human-readable reason for this capture (shown in the preview window and recorded to ~/.camclave/audit.jsonl). Agents SHOULD pass this — see skill/SKILL.md.',
+    )
     p.set_defaults(func=cmd_capture)
 
     p = sub.add_parser("snapshots", help="periodic snapshot mode")
@@ -546,6 +741,12 @@ def main() -> None:
         help="also save one PNG per working camera to ~/.camclave/device-<N>.png so you can visually identify which is which",
     )
     p.set_defaults(func=cmd_devices)
+
+    p = sub.add_parser(
+        "doctor",
+        help="one-screen diagnostic: python/deps/skill/cameras/session/integrity",
+    )
+    p.set_defaults(func=cmd_doctor)
 
     args = ap.parse_args()
     args.func(args)

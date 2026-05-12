@@ -79,7 +79,8 @@ The installer:
 | --- | --- |
 | `camclave start [--device 0] [--ttl 15m] [--no-sound] [--keep]` | **Consent action.** Opens the preview daemon. Default TTL 15 min, hard cap 60 min. |
 | `camclave status` | Active? How much TTL left? Is snapshot mode running? |
-| `camclave capture [--out PATH]` | Grabs one frame; prints absolute PNG path on stdout. Preview flashes. |
+| `camclave capture [--out PATH] [--reason "..."]` | Grabs one frame; prints absolute PNG path. Preview flashes; the reason briefly appears in the preview footer + audit log. |
+| `camclave doctor` | One-screen install / runtime / integrity diagnostic. Exits 0 if all green, 1 if anything's broken. |
 | `camclave snapshots --every 30s --duration 10m [--out PATH]` | Periodic mode for long-running tasks. Overwrites one file. Still frames, never video. |
 | `camclave snapshots-stop` | Cancel snapshot mode early. |
 | `camclave adjust [--show] [--brightness 0.6] [--exposure -5] [--focus 120] ...` | Tweak the live camera's properties: brightness, contrast, saturation, hue, gain, exposure, focus, zoom, sharpness, gamma, auto_exposure, auto_focus, auto_wb, wb_temperature. `--show` prints current values. The CLI reports what the camera accepted vs. what you asked for. |
