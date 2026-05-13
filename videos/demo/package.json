@@ -6,7 +6,7 @@
   "scripts": {
     "start": "remotion studio",
     "build": "remotion render Demo out/demo.mp4 --codec=h264",
-    "build:gif": "remotion render Demo out/demo.gif --codec=gif --width=960"
+    "build:gif": "remotion render Demo out/demo.gif --codec=gif --scale=0.5"
   },
   "dependencies": {
     "@remotion/cli": "4.0.305",
